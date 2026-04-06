@@ -1,6 +1,0 @@
-bedrock-agentcore
-strands-agents[otel]
-pymssql
-boto3
-urllib3<2
-chardet<6

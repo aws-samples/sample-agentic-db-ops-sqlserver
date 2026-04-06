@@ -7,6 +7,7 @@ from config.settings import (
     AWS_REGION, SNS_TOPIC_NAME, DB_INSTANCE_ID,
     HEALTH_AGENT_ARN, PERFORMANCE_AGENT_ARN, SECURITY_AGENT_ARN, LIFECYCLE_AGENT_ARN
 )
+from tools.shared_utils import send_notification
 
 
 def invoke_agent_runtime(agent_arn: str, prompt: str) -> Dict[str, Any]:
@@ -132,31 +133,4 @@ End of Report
 @tool
 def send_email_notification(subject: str, message: str, severity: str = "INFO") -> Dict[str, Any]:
     """Send an email notification via SNS. Severity: INFO, WARNING, CRITICAL"""
-    try:
-        sns_client = boto3.client('sns', region_name=AWS_REGION)
-        response = sns_client.list_topics()
-        topic_arn = None
-        for topic in response.get('Topics', []):
-            if topic['TopicArn'].endswith(f":{SNS_TOPIC_NAME}"):
-                topic_arn = topic['TopicArn']
-                break
-        if not topic_arn:
-            return {'status': 'error', 'error': f"SNS topic '{SNS_TOPIC_NAME}' not found"}
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        formatted_message = f"""
-SQL SERVER SUPERVISOR ALERT
-============================
-Timestamp: {timestamp}
-Severity: {severity}
-Subject: {subject}
-
-{message}
-
----
-Sent by AgentCore Supervisor Agent
-"""
-        sns_subject = f"[{severity}] {subject}"[:100]
-        resp = sns_client.publish(TopicArn=topic_arn, Subject=sns_subject, Message=formatted_message)
-        return {'status': 'success', 'message_id': resp.get('MessageId'), 'severity': severity}
-    except Exception as e:
-        return {'status': 'error', 'error': str(e)}
+    return send_notification(subject, message, severity, agent_name="Supervisor Agent")
