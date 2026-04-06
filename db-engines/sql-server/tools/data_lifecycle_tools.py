@@ -332,11 +332,28 @@ def get_index_sizes() -> Dict[str, Any]:
 def identify_old_data(table_name: str, date_column: str, days_old: int = 365) -> Dict[str, Any]:
     """Identify old data candidates for archival"""
     try:
+        days_old = int(days_old)
+        if days_old < 1 or days_old > 36500:
+            return {'error': 'days_old must be between 1 and 36500'}
         with db_cursor() as cursor:
-            cursor.execute(f"""
-            SELECT COUNT(*) as old_record_count, MIN({date_column}) as oldest_date, MAX({date_column}) as newest_old_date
-            FROM {table_name} WHERE {date_column} < DATEADD(day, -{days_old}, GETDATE())
-            """)
+            # Validate table and column exist via INFORMATION_SCHEMA to prevent SQL injection
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = %s AND COLUMN_NAME = %s
+                """,
+                (table_name, date_column),
+            )
+            if cursor.fetchone()[0] == 0:
+                return {'error': f'Table/column not found: {table_name}.{date_column}'}
+            # Safe to use as identifiers after validation; bracket-quote to handle special chars
+            safe_table = f"[{table_name}]"
+            safe_column = f"[{date_column}]"
+            cursor.execute(
+                "SELECT COUNT(*) as old_record_count, MIN(%s) as oldest_date, MAX(%s) as newest_old_date "
+                "FROM %s WHERE %s < DATEADD(day, -%d, GETDATE())"
+                % (safe_column, safe_column, safe_table, safe_column, days_old)
+            )
             result = cursor.fetchone()
         if result:
             return {'table_name': table_name, 'old_record_count': result[0],

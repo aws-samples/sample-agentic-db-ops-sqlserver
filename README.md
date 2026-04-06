@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-green) ![Python](https://img.shields.io/badge/python-3.10+-blue) ![Status](https://img.shields.io/badge/status-ready-brightgreen)
 
-This repo is a ready-to-deploy multi-agent system for autonomous database operations on Amazon RDS for SQL Server. Built with the [Strands Agents](https://github.com/awslabs/strands-agents) framework and deployed on [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html), it includes 5 specialized agents with `@tool` decorated functions that query DMVs, CloudWatch, Database Insights, CloudTrail, and RDS APIs, CloudFormation templates for infrastructure and IAM, and [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html) for cross-session knowledge retention using [memory strategies](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory-strategies.html) — combining [semantic](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/semantic-memory-strategy.html) extraction for operational facts with [summarization](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/summary-strategy.html) for historical investigation context.
+This repo is a ready-to-deploy multi-agent system for autonomous database operations on Amazon RDS for SQL Server. Built with the [Strands Agents](https://github.com/strands-agents/sdk-python) framework and deployed on [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html), it includes 5 specialized agents with `@tool` decorated functions that query DMVs, CloudWatch, Database Insights, CloudTrail, and RDS APIs, CloudFormation templates for infrastructure and IAM, and [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html) for cross-session knowledge retention using [memory strategies](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory-strategies.html) — combining [semantic](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/semantic-memory-strategy.html) extraction for operational facts with [summarization](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/summary-strategy.html) for historical investigation context.
 
 Deploy to AgentCore in private subnets with least-privilege IAM. Enable GenAI Observability with OpenTelemetry auto-instrumentation and a custom CloudWatch dashboard for real-time agent metrics and token tracking. Validate agents by diagnosing real performance issues on a live RDS SQL Server database.
 
@@ -365,7 +365,7 @@ We welcome contributions for:
 
 - [Amazon Bedrock AgentCore Documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html)
 - [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html)
-- [Strands Agents SDK](https://github.com/awslabs/strands-agents)
+- [Strands Agents SDK](https://github.com/strands-agents/sdk-python)
 - [AgentCore Memory Session Manager](https://strandsagents.com/docs/community/session-managers/agentcore-memory/)
 
 ## License

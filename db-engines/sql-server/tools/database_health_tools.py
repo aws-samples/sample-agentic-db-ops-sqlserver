@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 from strands import tool
 from config.settings import DB_INSTANCE_ID, AWS_REGION, SNS_TOPIC_NAME
+from tools.shared_utils import send_notification
 
 
 def get_pi_client():
@@ -423,32 +424,4 @@ def get_freeable_memory(minutes_back: int = 4320) -> Dict[str, Any]:
 @tool
 def send_email_notification(subject: str, message: str, severity: str = "INFO") -> Dict[str, Any]:
     """Send an email notification via SNS. Severity: INFO, WARNING, CRITICAL"""
-    try:
-        sns_client = boto3.client('sns', region_name=AWS_REGION)
-        response = sns_client.list_topics()
-        topic_arn = None
-        for topic in response.get('Topics', []):
-            if topic['TopicArn'].endswith(f":{SNS_TOPIC_NAME}"):
-                topic_arn = topic['TopicArn']
-                break
-        if not topic_arn:
-            return {'status': 'error', 'error': f"SNS topic '{SNS_TOPIC_NAME}' not found"}
-
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        formatted_message = f"""
-SQL SERVER PERFORMANCE ALERT
-============================
-Timestamp: {timestamp}
-Severity: {severity}
-Subject: {subject}
-
-{message}
-
----
-Sent by AgentCore Database Health Agent
-"""
-        sns_subject = f"[{severity}] {subject}"[:100]
-        resp = sns_client.publish(TopicArn=topic_arn, Subject=sns_subject, Message=formatted_message)
-        return {'status': 'success', 'message_id': resp.get('MessageId'), 'severity': severity}
-    except Exception as e:
-        return {'status': 'error', 'error': str(e)}
+    return send_notification(subject, message, severity, agent_name="Database Health Agent")
