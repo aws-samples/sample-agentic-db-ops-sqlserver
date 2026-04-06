@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM role for Autonomous DBOps agents on Amazon Bedrock AgentCore
+
+Parameters:
+  RoleName:
+    Type: String
+    Default: AgentCoreDBOpsRole
+    Description: Name of the IAM execution role
+
+Resources:
+  AgentCoreDBOpsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+      Policies:
+        - PolicyName: AgentCoreDBOpsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BedrockModelInvocation
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - arn:aws:bedrock:*::foundation-model/anthropic.*
+                  - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*
+
+              - Sid: AgentCoreA2AInvocation
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource: !Sub arn:aws:bedrock-agentcore:*:${AWS::AccountId}:runtime/*
+
+              - Sid: PerformanceInsights
+                Effect: Allow
+                Action:
+                  - pi:GetResourceMetrics
+                  - pi:DescribeDimensionKeys
+                  - pi:GetDimensionKeyDetails
+                Resource: !Sub arn:aws:pi:*:${AWS::AccountId}:metrics/rds/*
+
+              - Sid: KMSDecryptForPI
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DescribeKey
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub pi.${AWS::Region}.amazonaws.com
+
+              - Sid: CloudWatchMetrics
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:ListMetrics
+                  - cloudwatch:DescribeAlarms
+                Resource: '*'
+
+              - Sid: RDSReadOnly
+                Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBSnapshots
+                  - rds:DescribeEvents
+                  - rds:DescribeOptionGroups
+                  - rds:DescribeDBParameters
+                  - rds:DescribeDBParameterGroups
+                Resource: '*'
+
+              - Sid: SecretsManagerDBCredentials
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*
+
+              - Sid: SNSPublishAlerts
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                  - sns:ListTopics
+                Resource: '*'
+
+              - Sid: CloudWatchLogsQuery
+                Effect: Allow
+                Action:
+                  - logs:StartQuery
+                  - logs:GetQueryResults
+                  - logs:StopQuery
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/rds/*
+
+              - Sid: CloudWatchLogsAgentLogging
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/*
+
+              - Sid: CloudTrailLookup
+                Effect: Allow
+                Action:
+                  - cloudtrail:LookupEvents
+                Resource: '*'
+
+              - Sid: AgentCoreMemory
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetMemory
+                  - bedrock-agentcore:CreateMemory
+                  - bedrock-agentcore:DeleteMemory
+                  - bedrock-agentcore:ListMemories
+                  - bedrock-agentcore:GetMemoryStrategies
+                  - bedrock-agentcore:IngestMemoryEvents
+                  - bedrock-agentcore:RetrieveMemoryEvents
+                Resource: !Sub arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:memory/*
+
+              - Sid: OpenTelemetryTracing
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: AgentCore execution role ARN — use as AGENTCORE_ROLE_ARN
+    Value: !GetAtt AgentCoreDBOpsRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-RoleArn
+  RoleName:
+    Description: Role name
+    Value: !Ref AgentCoreDBOpsRole
