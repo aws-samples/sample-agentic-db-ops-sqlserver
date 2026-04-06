@@ -1,0 +1,152 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockModelInvocation",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/anthropic.*",
+        "arn:aws:bedrock:*:*:inference-profile/*"
+      ]
+    },
+    {
+      "Sid": "AgentCoreA2AInvocation",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:InvokeAgentRuntime"
+      ],
+      "Resource": "arn:aws:bedrock-agentcore:*:*:runtime/*"
+    },
+    {
+      "Sid": "PerformanceInsights",
+      "Effect": "Allow",
+      "Action": [
+        "pi:GetResourceMetrics",
+        "pi:DescribeDimensionKeys",
+        "pi:GetDimensionKeyDetails"
+      ],
+      "Resource": "arn:aws:pi:*:*:metrics/rds/*"
+    },
+    {
+      "Sid": "KMSDecryptForPI",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "pi.*.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "CloudWatchMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:ListMetrics",
+        "cloudwatch:DescribeAlarms"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RDSReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBSnapshots",
+        "rds:DescribeEvents",
+        "rds:DescribeOptionGroups",
+        "rds:DescribeDBParameters",
+        "rds:DescribeDBParameterGroups"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SecretsManagerDBCredentials",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:*:*:secret:*"
+    },
+    {
+      "Sid": "SNSPublishAlerts",
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish",
+        "sns:ListTopics"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchLogsQuery",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery",
+        "logs:GetQueryResults",
+        "logs:StopQuery"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/rds/*"
+    },
+    {
+      "Sid": "CloudWatchLogsAgentLogging",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/bedrock-agentcore/*"
+    },
+    {
+      "Sid": "CloudTrailLookup",
+      "Effect": "Allow",
+      "Action": [
+        "cloudtrail:LookupEvents"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AgentCoreMemory",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:GetMemory",
+        "bedrock-agentcore:CreateMemory",
+        "bedrock-agentcore:DeleteMemory",
+        "bedrock-agentcore:ListMemories",
+        "bedrock-agentcore:GetMemoryStrategies",
+        "bedrock-agentcore:IngestMemoryEvents",
+        "bedrock-agentcore:RetrieveMemoryEvents"
+      ],
+      "Resource": "arn:aws:bedrock-agentcore:*:*:memory/*"
+    },
+    {
+      "Sid": "ECRContainerPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetAuthorizationToken"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "OpenTelemetryTracing",
+      "Effect": "Allow",
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

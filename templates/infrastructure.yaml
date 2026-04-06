@@ -1,0 +1,702 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Autonomous DBOps — Foundational Infrastructure.
+  VPC, RDS SQL Server, Bastion Host, VPC Endpoints, SNS.
+  Deploy this first, then deploy agentcore-role.yaml, then run deploy.sh.
+
+# ─────────────────────────────────────────────────────────────────
+# Parameters
+# ─────────────────────────────────────────────────────────────────
+Parameters:
+  LatestWindowsAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-windows-latest/Windows_Server-2019-English-Full-Base'
+
+  DBInstanceClass:
+    Type: String
+    Default: db.r6i.xlarge
+    AllowedValues:
+      - db.r6i.large
+      - db.r6i.xlarge
+      - db.r6i.2xlarge
+      - db.m6i.large
+      - db.m6i.xlarge
+
+  DBAllocatedStorage:
+    Type: Number
+    Default: 100
+    MinValue: 20
+    MaxValue: 16384
+
+  DBEngineVersion:
+    Type: String
+    Default: '15.00.4455.2.v1'
+    Description: SQL Server engine version
+
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Email for SNS alert notifications (leave blank to skip subscription)
+
+  BastionInstanceType:
+    Type: String
+    Default: m5.large
+
+# ─────────────────────────────────────────────────────────────────
+# Conditions
+# ─────────────────────────────────────────────────────────────────
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+
+Resources:
+  # ═══════════════════════════════════════════════════════════════
+  #  VPC & Networking
+  # ═══════════════════════════════════════════════════════════════
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.32.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-vpc
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.32.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.32.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-2
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: 10.32.3.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: 10.32.4.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-2
+
+  # --- Internet Gateway ---
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-igw
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # --- Route Tables ---
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-public-rt
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-private-rt
+
+  PrivateSubnet1RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Security Groups
+  # ═══════════════════════════════════════════════════════════════
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Bastion host - RDP from private networks
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-bastion-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 10.0.0.0/8
+          Description: RDP from private networks
+        - IpProtocol: '-1'
+          CidrIp: 10.32.0.0/16
+          Description: All traffic within VPC
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: RDS SQL Server - port 1433
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-rds-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          SourceSecurityGroupId: !Ref BastionSecurityGroup
+          Description: SQL from bastion
+
+  # Allow agents (running in private subnets) to reach RDS
+  RDSIngressFromAgents:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RDSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1433
+      ToPort: 1433
+      SourceSecurityGroupId: !Ref AgentSecurityGroup
+      Description: SQL from AgentCore agents
+
+  # Self-referencing rule for RDS SG
+  RDSIngressSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RDSSecurityGroup
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref RDSSecurityGroup
+
+  # Agent security group — agents run in private subnets
+  AgentSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: AgentCore agents - outbound to AWS services
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-agent-sg
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: All outbound
+
+  # VPC Endpoint security group — allows HTTPS from VPC CIDR
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: VPC Endpoints - HTTPS from VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-vpce-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.32.0.0/16
+          Description: HTTPS from VPC
+
+  # ═══════════════════════════════════════════════════════════════
+  #  VPC Endpoints (required by agents in private subnets)
+  # ═══════════════════════════════════════════════════════════════
+
+  # --- Gateway Endpoints ---
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  # --- Interface Endpoints (required) ---
+  BedrockRuntimeEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-runtime
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  AgentCoreEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-agentcore
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  RDSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.rds
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  CloudWatchMonitoringEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.monitoring
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  CloudWatchLogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  ECRApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.api
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  ECRDkrEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.dkr
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  # --- Interface Endpoints (recommended — used by specific agents) ---
+  PIEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.pi
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  SNSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sns
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  CloudTrailEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.cloudtrail
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  KMSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.kms
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  STSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sts
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  # --- Interface Endpoints (required — AgentCore control plane) ---
+  AgentCoreControlEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-agentcore-control
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  AgentCoreGatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-agentcore.gateway
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Secrets Manager — DB Credentials
+  # ═══════════════════════════════════════════════════════════════
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${AWS::StackName}-sqlserver-secret
+      Description: RDS SQL Server credentials for agentic-db-ops
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "admin"}'
+        GenerateStringKey: password
+        PasswordLength: 20
+        ExcludeCharacters: "\"'@/\\"
+
+  # ═══════════════════════════════════════════════════════════════
+  #  RDS SQL Server
+  # ═══════════════════════════════════════════════════════════════
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub ${AWS::StackName} private subnets
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+
+  SQLServerInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub ${AWS::StackName}-sqlserver
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: sqlserver-se
+      EngineVersion: !Ref DBEngineVersion
+      LicenseModel: license-included
+      MasterUsername: !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:username}}'
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBSecret}:SecretString:password}}'
+      AllocatedStorage: !Ref DBAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 30
+      AutoMinorVersionUpgrade: true
+      AllowMajorVersionUpgrade: false
+      EnablePerformanceInsights: true
+      PerformanceInsightsRetentionPeriod: 7
+      EnableCloudwatchLogsExports:
+        - error
+        - agent
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+
+  # ═══════════════════════════════════════════════════════════════
+  #  SNS Topic — Agent Alerts
+  # ═══════════════════════════════════════════════════════════════
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${AWS::StackName}-alerts
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Bastion Host (Windows + SSMS)
+  # ═══════════════════════════════════════════════════════════════
+  BastionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: bastion-secret-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DBSecret
+
+  BastionInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref BastionRole]
+
+  BastionHost:
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT30M
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          config: [prereq, programs, signal_complete]
+        prereq:
+          files:
+            c:\cfn\cfn-hup.conf:
+              content: !Sub |
+                [main]
+                stack=${AWS::StackName}
+                region=${AWS::Region}
+            c:\cfn\hooks.d\cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.BastionHost.Metadata.AWS::CloudFormation::Init
+                action=cfn-init.exe -v -c config -s ${AWS::StackName} --resource BastionHost --region "${AWS::Region}"
+          commands:
+            01-installChocolatey:
+              command: 'powershell.exe -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString(''https://chocolatey.org/install.ps1''));"'
+              waitAfterCompletion: '0'
+            02-disableChocoPrompts:
+              command: C:\ProgramData\chocolatey\choco.exe feature enable -n allowGlobalConfirmation
+              waitAfterCompletion: '0'
+          services:
+            windows:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - c:\cfn\cfn-hup.conf
+                  - c:\cfn\hooks.d\cfn-auto-reloader.conf
+        programs:
+          commands:
+            01-installSSMS:
+              command: C:\ProgramData\chocolatey\choco.exe install ssms
+              waitAfterCompletion: '0'
+        signal_complete:
+          commands:
+            01-signal:
+              command: !Sub 'cfn-signal.exe -e %ERRORLEVEL% --resource BastionHost --stack ${AWS::StackName} --region ${AWS::Region}'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      ImageId: !Ref LatestWindowsAmiId
+      InstanceType: !Ref BastionInstanceType
+      IamInstanceProfile: !Ref BastionInstanceProfile
+      SecurityGroupIds: [!Ref BastionSecurityGroup]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-bastion
+      UserData: !Base64
+        Fn::Sub: |
+          <powershell>
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+          Install-Module -Force AWSPowerShell
+          Import-Module AWSPowerShell
+          Install-Module sqlserver -Force
+          Import-Module sqlserver
+          msiexec.exe /i "https://awscli.amazonaws.com/AWSCLIV2.msi" /quiet
+
+          # Set admin password from Secrets Manager
+          $response = Get-SECSecretValue -SecretId "${DBSecret}"
+          $secret = ConvertFrom-Json -InputObject $response.SecretString
+          ([adsi]"WinNT://$env:computername/$($secret.username)").SetPassword("$($secret.password)")
+
+          cfn-init.exe -v -c config -s ${AWS::StackId} --resource BastionHost --region ${AWS::Region}
+          </powershell>
+
+  # ═══════════════════════════════════════════════════════════════
+  #  S3 Backup/Restore Role for RDS
+  # ═══════════════════════════════════════════════════════════════
+  SqlBackupRestoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-rds-s3-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: rds.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: rds-s3-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                  - s3:GetObjectMetaData
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListMultipartUploadParts
+                  - s3:AbortMultipartUpload
+                Resource: '*'
+
+# ─────────────────────────────────────────────────────────────────
+# Outputs — maps directly to settings.py env vars and deploy.sh
+# ─────────────────────────────────────────────────────────────────
+Outputs:
+  DBInstanceId:
+    Description: 'Export as: export DB_INSTANCE_ID=<value>'
+    Value: !Ref SQLServerInstance
+    Export:
+      Name: !Sub ${AWS::StackName}-DBInstanceId
+
+  DBSecretId:
+    Description: 'Export as: export DB_SECRET_ID=<value>'
+    Value: !Ref DBSecret
+    Export:
+      Name: !Sub ${AWS::StackName}-DBSecretId
+
+  SecurityGroupId:
+    Description: 'Export as: export SECURITY_GROUP_ID=<value>'
+    Value: !Ref AgentSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-SecurityGroupId
+
+  Subnet1:
+    Description: 'Export as: export SUBNET1=<value>'
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub ${AWS::StackName}-Subnet1
+
+  Subnet2:
+    Description: 'Export as: export SUBNET2=<value>'
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub ${AWS::StackName}-Subnet2
+
+  SNSTopicName:
+    Description: 'Export as: export SNS_TOPIC_NAME=<value>'
+    Value: !GetAtt AlertTopic.TopicName
+    Export:
+      Name: !Sub ${AWS::StackName}-SNSTopicName
+
+  SNSTopicArn:
+    Description: SNS Topic ARN
+    Value: !Ref AlertTopic
+
+  RDSEndpoint:
+    Description: RDS SQL Server endpoint
+    Value: !GetAtt SQLServerInstance.Endpoint.Address
+
+  RDSPort:
+    Description: RDS SQL Server port
+    Value: !GetAtt SQLServerInstance.Endpoint.Port
+
+  VPCID:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub ${AWS::StackName}-VPCID
+
+  BastionPublicIP:
+    Description: Bastion host public IP (RDP target)
+    Value: !GetAtt BastionHost.PublicIp
+
+  BastionInstanceId:
+    Description: Bastion instance ID (for SSM Session Manager)
+    Value: !Ref BastionHost
+
+  SetEnvVarsCommand:
+    Description: Run this after stack creation to set all env vars for deploy.sh
+    Value: !Sub |
+      export DB_INSTANCE_ID=${SQLServerInstance}
+      export DB_SECRET_ID=${DBSecret}
+      export SECURITY_GROUP_ID=${AgentSecurityGroup}
+      export SUBNET1=${PrivateSubnet1}
+      export SUBNET2=${PrivateSubnet2}
+      export SNS_TOPIC_NAME=${AlertTopic.TopicName}
+      export AWS_REGION=${AWS::Region}

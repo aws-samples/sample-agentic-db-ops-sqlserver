@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  VPC Endpoints for Autonomous DBOps agents.
+  Creates all required VPC endpoints so agents in private subnets can reach
+  AWS services without a NAT gateway. Deploy this into your existing VPC.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC where your RDS instance and agents run
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnet(s) for interface endpoints (same subnets where agents will deploy)
+
+  VpcCidr:
+    Type: String
+    Description: VPC CIDR block (e.g. 10.0.0.0/16) — used for endpoint security group ingress
+    AllowedPattern: '(\d{1,3}\.){3}\d{1,3}/\d{1,2}'
+
+  PrivateRouteTableId:
+    Type: String
+    Description: Route table ID for private subnets (needed for S3 gateway endpoint)
+
+Resources:
+  # ═══════════════════════════════════════════════════════════════
+  #  Security Group for VPC Endpoints
+  # ═══════════════════════════════════════════════════════════════
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow HTTPS from VPC to VPC endpoints
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-vpce-sg
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCidr
+          Description: HTTPS from VPC
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Gateway Endpoint
+  # ═══════════════════════════════════════════════════════════════
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTableId
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Interface Endpoints — Required
+  # ═══════════════════════════════════════════════════════════════
+  BedrockRuntimeEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-runtime
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  AgentCoreEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-agentcore
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  SecretsManagerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  RDSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.rds
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  CloudWatchMonitoringEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.monitoring
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  CloudWatchLogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  ECRApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.api
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  ECRDkrEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.dkr
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Interface Endpoints — Recommended (used by specific agents)
+  # ═══════════════════════════════════════════════════════════════
+  PIEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.pi
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  SNSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sns
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  CloudTrailEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.cloudtrail
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  KMSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.kms
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  STSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sts
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Interface Endpoints — Required (AgentCore control plane)
+  # ═══════════════════════════════════════════════════════════════
+  AgentCoreControlEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-agentcore-control
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+  AgentCoreGatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.bedrock-agentcore.gateway
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+
+Outputs:
+  EndpointSecurityGroupId:
+    Description: Security group created for VPC endpoints
+    Value: !Ref EndpointSecurityGroup
+
+  EndpointsCreated:
+    Description: Summary of endpoints created
+    Value: "s3 (gateway), bedrock-runtime, bedrock-agentcore, bedrock-agentcore-control, bedrock-agentcore.gateway, secretsmanager, rds, monitoring, logs, ecr.api, ecr.dkr, pi, sns, cloudtrail, kms, sts"
