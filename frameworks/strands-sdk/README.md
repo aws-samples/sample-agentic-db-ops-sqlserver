@@ -1,6 +1,6 @@
 # Strands Agents SDK
 
-This project uses [Strands Agents](https://github.com/awslabs/strands-agents) as the core agent framework. Strands provides:
+This project uses [Strands Agents](https://github.com/strands-agents/sdk-python) as the core agent framework. Strands provides:
 
 - **`@tool` decorator** — Convert any Python function into an agent tool
 - **`Agent` class** — Create agents with system prompts, tools, and model configuration
@@ -10,6 +10,6 @@ This project uses [Strands Agents](https://github.com/awslabs/strands-agents) as
 
 ## Resources
 
-- [Strands Agents GitHub](https://github.com/awslabs/strands-agents)
-- [Strands Documentation](https://strandsagents.com/docs/)
-- [AgentCore Memory Session Manager](https://strandsagents.com/docs/community/session-managers/agentcore-memory/)
+- [Strands Agents GitHub](https://github.com/strands-agents/sdk-python)
+- [Strands Documentation](https://strandsagents.com/)
+- [AgentCore Memory Session Manager](https://strandsagents.com/docs/user-guide/concepts/tools/)

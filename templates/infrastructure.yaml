@@ -186,9 +186,16 @@ Resources:
           ToPort: 3389
           CidrIp: 10.0.0.0/8
           Description: RDP from private networks
-        - IpProtocol: '-1'
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
           CidrIp: 10.32.0.0/16
-          Description: All traffic within VPC
+          Description: SQL Server within VPC
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.32.0.0/16
+          Description: HTTPS within VPC
 
   RDSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -221,8 +228,11 @@ Resources:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref RDSSecurityGroup
-      IpProtocol: '-1'
+      IpProtocol: tcp
+      FromPort: 1433
+      ToPort: 1433
       SourceSecurityGroupId: !Ref RDSSecurityGroup
+      Description: SQL Server self-referencing
 
   # Agent security group — agents run in private subnets
   AgentSecurityGroup:
@@ -234,9 +244,16 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-agent-sg
       SecurityGroupEgress:
-        - IpProtocol: '-1'
-          CidrIp: 0.0.0.0/0
-          Description: All outbound
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.32.0.0/16
+          Description: HTTPS to VPC endpoints
+        - IpProtocol: tcp
+          FromPort: 1433
+          ToPort: 1433
+          CidrIp: 10.32.0.0/16
+          Description: SQL Server to RDS
 
   # VPC Endpoint security group — allows HTTPS from VPC CIDR
   VPCEndpointSecurityGroup:
@@ -422,6 +439,38 @@ Resources:
       SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
 
   # ═══════════════════════════════════════════════════════════════
+  #  KMS Key — Encryption for SNS, Secrets Manager
+  # ═══════════════════════════════════════════════════════════════
+  EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub ${AWS::StackName} encryption key for SNS and Secrets Manager
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowRootAccount
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: AllowSNSUsage
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+            Resource: '*'
+
+  EncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${AWS::StackName}-key
+      TargetKeyId: !Ref EncryptionKey
+
+  # ═══════════════════════════════════════════════════════════════
   #  Secrets Manager — DB Credentials
   # ═══════════════════════════════════════════════════════════════
   DBSecret:
@@ -429,11 +478,25 @@ Resources:
     Properties:
       Name: !Sub ${AWS::StackName}-sqlserver-secret
       Description: RDS SQL Server credentials for agentic-db-ops
+      KmsKeyId: !Ref EncryptionKey
       GenerateSecretString:
         SecretStringTemplate: '{"username": "admin"}'
         GenerateStringKey: password
         PasswordLength: 20
         ExcludeCharacters: "\"'@/\\"
+
+  DBSecretRotationSchedule:
+    Type: AWS::SecretsManager::RotationSchedule
+    DependsOn: SQLServerInstance
+    Properties:
+      SecretId: !Ref DBSecret
+      HostedRotationLambda:
+        RotationType: SQLServerSingleUser
+        SuperuserSecretArn: !Ref DBSecret
+        VpcSecurityGroupIds: !Ref AgentSecurityGroup
+        VpcSubnetIds: !Sub ${PrivateSubnet1},${PrivateSubnet2}
+      RotationRules:
+        AutomaticallyAfterDays: 30
 
   # ═══════════════════════════════════════════════════════════════
   #  RDS SQL Server
@@ -460,7 +523,8 @@ Resources:
       AllocatedStorage: !Ref DBAllocatedStorage
       StorageType: gp3
       StorageEncrypted: true
-      MultiAZ: false
+      MultiAZ: true
+      DeletionProtection: true
       PubliclyAccessible: false
       BackupRetentionPeriod: 30
       AutoMinorVersionUpgrade: true
@@ -481,6 +545,7 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: !Sub ${AWS::StackName}-alerts
+      KmsMasterKeyId: !Ref EncryptionKey
 
   AlertSubscription:
     Type: AWS::SNS::Subscription
@@ -493,6 +558,17 @@ Resources:
   # ═══════════════════════════════════════════════════════════════
   #  Bastion Host (Windows + SSMS)
   # ═══════════════════════════════════════════════════════════════
+  BastionSecretAccessPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub ${AWS::StackName}-bastion-secret-access
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: !Ref DBSecret
+
   BastionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -506,14 +582,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      Policies:
-        - PolicyName: bastion-secret-access
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: secretsmanager:GetSecretValue
-                Resource: !Ref DBSecret
+        - !Ref BastionSecretAccessPolicy
 
   BastionInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -571,6 +640,7 @@ Resources:
       SubnetId: !Ref PublicSubnet1
       ImageId: !Ref LatestWindowsAmiId
       InstanceType: !Ref BastionInstanceType
+      EbsOptimized: true
       IamInstanceProfile: !Ref BastionInstanceProfile
       SecurityGroupIds: [!Ref BastionSecurityGroup]
       Tags:
@@ -595,8 +665,46 @@ Resources:
           </powershell>
 
   # ═══════════════════════════════════════════════════════════════
-  #  S3 Backup/Restore Role for RDS
+  #  S3 Backup/Restore for RDS
   # ═══════════════════════════════════════════════════════════════
+  SqlBackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-sql-backups-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref EncryptionKey
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  SqlBackupRestorePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub ${AWS::StackName}-rds-s3-access
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: !GetAtt SqlBackupBucket.Arn
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectMetaData
+              - s3:PutObject
+              - s3:ListMultipartUploadParts
+              - s3:AbortMultipartUpload
+            Resource: !Sub ${SqlBackupBucket.Arn}/*
+
   SqlBackupRestoreRole:
     Type: AWS::IAM::Role
     Properties:
@@ -608,21 +716,8 @@ Resources:
             Principal:
               Service: rds.amazonaws.com
             Action: sts:AssumeRole
-      Policies:
-        - PolicyName: rds-s3-access
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:ListBucket
-                  - s3:GetBucketLocation
-                  - s3:GetObjectMetaData
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:ListMultipartUploadParts
-                  - s3:AbortMultipartUpload
-                Resource: '*'
+      ManagedPolicyArns:
+        - !Ref SqlBackupRestorePolicy
 
 # ─────────────────────────────────────────────────────────────────
 # Outputs — maps directly to settings.py env vars and deploy.sh

@@ -1,29 +1,11 @@
 import boto3
-import pymssql
 import json
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 from strands import tool
 from config.settings import DB_INSTANCE_ID, DB_SECRET_ID, AWS_REGION, SNS_TOPIC_NAME
-
-
-def get_db_connection():
-    # Get host/port from RDS API (not in the secret)
-    rds_client = boto3.client('rds', region_name=AWS_REGION)
-    rds_response = rds_client.describe_db_instances(DBInstanceIdentifier=DB_INSTANCE_ID)
-    endpoint = rds_response['DBInstances'][0]['Endpoint']
-    host = endpoint['Address']
-    port = endpoint['Port']
-
-    # Get credentials from Secrets Manager
-    secrets_client = boto3.client('secretsmanager', region_name=AWS_REGION)
-    secret = secrets_client.get_secret_value(SecretId=DB_SECRET_ID)
-    creds = json.loads(secret['SecretString'])
-    return pymssql.connect(
-        server=host, user=creds['username'],
-        password=creds['password'], port=port, database='master'
-    )
+from tools.shared_utils import db_cursor, fetch_all, send_notification
 
 
 # ===== ENCRYPTION & DATA PROTECTION =====
@@ -32,20 +14,17 @@ def get_db_connection():
 def check_tde_status() -> Dict[str, Any]:
     """Check Transparent Data Encryption (TDE) status per database"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-        SELECT d.name AS database_name,
-               CASE WHEN dek.encryption_state IS NOT NULL THEN 1 ELSE 0 END AS tde_enabled,
-               dek.encryption_state, dek.percent_complete, dek.key_algorithm, dek.key_length
-        FROM sys.databases d
-        LEFT JOIN sys.dm_database_encryption_keys dek ON d.database_id = dek.database_id
-        WHERE d.database_id > 4
-        ORDER BY d.name
-        """)
-        columns = [desc[0] for desc in cursor.description]
-        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        cursor.close(); conn.close()
+        with db_cursor() as cursor:
+            cursor.execute("""
+            SELECT d.name AS database_name,
+                   CASE WHEN dek.encryption_state IS NOT NULL THEN 1 ELSE 0 END AS tde_enabled,
+                   dek.encryption_state, dek.percent_complete, dek.key_algorithm, dek.key_length
+            FROM sys.databases d
+            LEFT JOIN sys.dm_database_encryption_keys dek ON d.database_id = dek.database_id
+            WHERE d.database_id > 4
+            ORDER BY d.name
+            """)
+            results = fetch_all(cursor)
         enabled_count = sum(1 for r in results if r['tde_enabled'])
         return {'databases': results, 'total_databases': len(results),
                 'tde_enabled_count': enabled_count, 'tde_disabled_count': len(results) - enabled_count}
@@ -222,31 +201,4 @@ def check_rds_audit_settings() -> Dict[str, Any]:
 @tool
 def send_email_notification(subject: str, message: str, severity: str = "INFO") -> Dict[str, Any]:
     """Send a security alert via SNS. Severity: INFO, WARNING, CRITICAL"""
-    try:
-        sns_client = boto3.client('sns', region_name=AWS_REGION)
-        response = sns_client.list_topics()
-        topic_arn = None
-        for topic in response.get('Topics', []):
-            if topic['TopicArn'].endswith(f":{SNS_TOPIC_NAME}"):
-                topic_arn = topic['TopicArn']
-                break
-        if not topic_arn:
-            return {'status': 'error', 'error': f"SNS topic '{SNS_TOPIC_NAME}' not found"}
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        formatted_message = f"""
-SQL SERVER SECURITY ALERT
-=========================
-Timestamp: {timestamp}
-Severity: {severity}
-Subject: {subject}
-
-{message}
-
----
-Sent by AgentCore Security Audit Agent
-"""
-        sns_subject = f"[{severity}] {subject}"[:100]
-        resp = sns_client.publish(TopicArn=topic_arn, Subject=sns_subject, Message=formatted_message)
-        return {'status': 'success', 'message_id': resp.get('MessageId'), 'severity': severity}
-    except Exception as e:
-        return {'status': 'error', 'error': str(e)}
+    return send_notification(subject, message, severity, agent_name="Security Audit Agent")
