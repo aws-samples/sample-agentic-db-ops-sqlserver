@@ -1,7 +1,0 @@
-__pycache__/
-*.pyc
-.env
-.venv/
-.bedrock_agentcore.yaml
-scan-report*.json
-new-scan-report*.json
