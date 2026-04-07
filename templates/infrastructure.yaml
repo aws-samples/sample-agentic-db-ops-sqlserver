@@ -667,15 +667,36 @@ Resources:
   # ═══════════════════════════════════════════════════════════════
   #  S3 Backup/Restore for RDS
   # ═══════════════════════════════════════════════════════════════
-  SqlBackupBucket:
+  SqlBackupLogBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${AWS::StackName}-sql-backups-${AWS::AccountId}
+      BucketName: !Sub ${AWS::StackName}-sql-backups-logs-${AWS::AccountId}
+      AccessControl: LogDeliveryWrite
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: aws:kms
               KMSMasterKeyID: !Ref EncryptionKey
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  SqlBackupBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-sql-backups-${AWS::AccountId}
+      AccessControl: Private
+      ObjectLockEnabled: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref EncryptionKey
+      LoggingConfiguration:
+        DestinationBucketName: !Ref SqlBackupLogBucket
+        LogFilePrefix: backup-logs/
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
