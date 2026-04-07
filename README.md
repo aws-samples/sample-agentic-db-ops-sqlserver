@@ -130,7 +130,7 @@ Session 2: Supervisor asked "what happened today?"
 | 📜 `.env` | Your environment variables (see Quick Start) |
 | **db-engines/sql-server/** | |
 | ├── 🤖 `agents/` | Agent definitions (5 agents) |
-| ├── 🔧 `tools/` | `@tool` functions grouped by domain |
+| ├── 🔧 `tools/` | `@tool` functions grouped by domain + `shared_utils.py` |
 | ├── ⚙️ `config/settings.py` | All configuration in one place |
 | └── 📦 `requirements.txt` | Python dependencies |
 | **scripts/** | |
@@ -158,7 +158,7 @@ Session 2: Supervisor asked "what happened today?"
 ### 1. Clone and set up
 
 ```bash
-git clone https://github.com/your-org/agentic-db-ops.git
+git clone <your-repo-url>
 cd agentic-db-ops
 
 # Create Python virtual environment
@@ -366,7 +366,7 @@ We welcome contributions for:
 - [Amazon Bedrock AgentCore Documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html)
 - [AgentCore Memory](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html)
 - [Strands Agents SDK](https://github.com/strands-agents/sdk-python)
-- [AgentCore Memory Session Manager](https://strandsagents.com/docs/community/session-managers/agentcore-memory/)
+- [AgentCore Memory Session Manager](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/strands-sdk-memory.html)
 
 ## License
 
