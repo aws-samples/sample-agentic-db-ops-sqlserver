@@ -485,18 +485,8 @@ Resources:
         PasswordLength: 20
         ExcludeCharacters: "\"'@/\\"
 
-  DBSecretRotationSchedule:
-    Type: AWS::SecretsManager::RotationSchedule
-    DependsOn: SQLServerInstance
-    Properties:
-      SecretId: !Ref DBSecret
-      HostedRotationLambda:
-        RotationType: SQLServerSingleUser
-        SuperuserSecretArn: !Ref DBSecret
-        VpcSecurityGroupIds: !Ref AgentSecurityGroup
-        VpcSubnetIds: !Sub ${PrivateSubnet1},${PrivateSubnet2}
-      RotationRules:
-        AutomaticallyAfterDays: 30
+  # Note: Secret rotation can be configured post-deployment via AWS Console
+  # or CLI using: aws secretsmanager rotate-secret --secret-id <secret-arn>
 
   # ═══════════════════════════════════════════════════════════════
   #  RDS SQL Server
@@ -523,8 +513,7 @@ Resources:
       AllocatedStorage: !Ref DBAllocatedStorage
       StorageType: gp3
       StorageEncrypted: true
-      MultiAZ: true
-      DeletionProtection: true
+      MultiAZ: false
       PubliclyAccessible: false
       BackupRetentionPeriod: 30
       AutoMinorVersionUpgrade: true
@@ -671,7 +660,6 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub ${AWS::StackName}-sql-backups-logs-${AWS::AccountId}
-      AccessControl: LogDeliveryWrite
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -683,11 +671,27 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+  SqlBackupLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SqlBackupLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: S3ServerAccessLogsPolicy
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub ${SqlBackupLogBucket.Arn}/backup-logs/*
+            Condition:
+              ArnLike:
+                aws:SourceArn: !GetAtt SqlBackupBucket.Arn
+
   SqlBackupBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub ${AWS::StackName}-sql-backups-${AWS::AccountId}
-      AccessControl: Private
       ObjectLockEnabled: true
       BucketEncryption:
         ServerSideEncryptionConfiguration:
