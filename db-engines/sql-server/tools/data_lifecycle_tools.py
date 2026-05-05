@@ -336,7 +336,7 @@ def identify_old_data(table_name: str, date_column: str, days_old: int = 365) ->
         if days_old < 1 or days_old > 36500:
             return {'error': 'days_old must be between 1 and 36500'}
         with db_cursor() as cursor:
-            # Validate table and column exist via INFORMATION_SCHEMA to prevent SQL injection
+            # Validate table and column exist in the database
             cursor.execute(
                 """
                 SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
@@ -346,11 +346,9 @@ def identify_old_data(table_name: str, date_column: str, days_old: int = 365) ->
             )
             if cursor.fetchone()[0] == 0:
                 return {'error': f'Table/column not found: {table_name}.{date_column}'}
-            # Safe to use as identifiers after validation; bracket-quote and escape ] to handle special chars
+            # Identifiers validated against INFORMATION_SCHEMA above
             safe_table = f"[{table_name.replace(']', ']]')}]"
             safe_column = f"[{date_column.replace(']', ']]')}]"
-            # SQL Server does not support parameterized identifiers (table/column names),
-            # so we use string formatting after INFORMATION_SCHEMA validation above.
             cursor.execute(
                 "SELECT COUNT(*) as old_record_count, MIN(%s) as oldest_date, MAX(%s) as newest_old_date "
                 "FROM %s WHERE %s < DATEADD(day, -%d, GETDATE())"

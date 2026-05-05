@@ -9,7 +9,7 @@ from tools.shared_utils import db_cursor, fetch_all, send_notification
 
 
 def _validate_int(value, name, min_val=1, max_val=10000):
-    """Validate and clamp an integer parameter to prevent injection via non-int types."""
+    """Validate and clamp an integer parameter to a safe range."""
     val = int(value)
     if val < min_val or val > max_val:
         raise ValueError(f"{name} must be between {min_val} and {max_val}")
@@ -63,7 +63,6 @@ def get_query_store_top_queries(hours_back: int = 24, top_n: int = 10, metric: s
         top_n = _validate_int(top_n, "top_n", 1, 100)
         order_by = _ORDER_BY_METRICS.get(metric, _ORDER_BY_METRICS["cpu"])
         with db_cursor() as cursor:
-            # TOP and ORDER BY cannot be parameterized in T-SQL; validated via allowlist/int check above
             cursor.execute(
                 """
                 SELECT TOP %d
@@ -303,7 +302,6 @@ def get_expensive_queries_from_cache(top_n: int = 10, metric: str = "cpu") -> Di
         top_n = _validate_int(top_n, "top_n", 1, 100)
         order_by = _CACHE_ORDER_BY_METRICS.get(metric, _CACHE_ORDER_BY_METRICS["cpu"])
         with db_cursor() as cursor:
-            # TOP and ORDER BY cannot be parameterized; validated via allowlist/int check above
             cursor.execute(
                 """
                 SELECT TOP %d SUBSTRING(st.text, 1, 500) as query_text, qs.execution_count,
