@@ -368,6 +368,14 @@ We welcome contributions for:
 - [Strands Agents SDK](https://github.com/strands-agents/sdk-python)
 - [AgentCore Memory Session Manager](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/strands-sdk-memory.html)
 
+## Disclaimer
+
+This is sample code for educational purposes only. It should not be used in production accounts, on production workloads, or on production data. Assess the security of this solution before deploying it. AWS code samples are provided "as is" without warranty of any kind, either expressed or implied. These examples are intended to help customers use AWS services in their applications and should be thoroughly tested, secured, and optimized according to your organization's security standards and policies before any production use.
+
+## Security
+
+See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for how to report security issues, and [SECURITY](SECURITY.md) for bastion host hardening and S3 bucket recommendations.
+
 ## License
 
 This project is licensed under the MIT License.
