@@ -1,6 +1,6 @@
 # Database Engines
 
-Agent implementations for specific database engines. Each engine has its own agents, tools, and configuration.
+Agent implementations organized by database engine. Currently supports SQL Server.
 
 | Engine | Agents | Tools | Status |
 |--------|--------|-------|--------|
