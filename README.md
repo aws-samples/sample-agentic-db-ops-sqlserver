@@ -18,10 +18,6 @@ Deploy to AgentCore in private subnets with least-privilege IAM. Enable GenAI Ob
 | [💾 Data Lifecycle](db-engines/sql-server#data-lifecycle-tools-25) | 25 | SQL Server DMVs, CloudWatch, RDS API | Table sizes, backups, TempDB, storage trends | ✅ Ready |
 | [🎯 Supervisor](db-engines/sql-server#supervisor-tools-10) | 10 | A2A orchestration | Routes queries, correlates findings, daily reports | ✅ Ready |
 
-### PostgreSQL
-
-🚧 Coming soon
-
 ## Architecture
 
 ```mermaid
@@ -357,7 +353,7 @@ All configuration lives in [`config/settings.py`](db-engines/sql-server/config/s
 
 We welcome contributions for:
 - Additional tools for existing agents
-- New database engine support (PostgreSQL is next)
+- New database engine support
 - Improved memory strategies
 - CloudFormation template enhancements
 

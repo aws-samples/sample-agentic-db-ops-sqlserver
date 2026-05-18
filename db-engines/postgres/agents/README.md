@@ -1,3 +1,0 @@
-# PostgreSQL Agents
-
-🚧 Coming soon

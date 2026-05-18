@@ -1,3 +1,0 @@
-# PostgreSQL Config
-
-🚧 Coming soon

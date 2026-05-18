@@ -5,4 +5,3 @@ Agent implementations for specific database engines. Each engine has its own age
 | Engine | Agents | Tools | Status |
 |--------|--------|-------|--------|
 | [SQL Server](sql-server/) | 5 | 70 | ✅ Ready |
-| [PostgreSQL](postgres/) | — | — | 🚧 Coming soon |

@@ -1,3 +1,0 @@
-# PostgreSQL Tools
-
-🚧 Coming soon
