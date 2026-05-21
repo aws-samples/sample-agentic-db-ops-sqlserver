@@ -22,8 +22,6 @@ The IAM user or role running these commands needs the following permissions (in 
 | `devops-agent:CreateAgentSpace`, `devops-agent:DeleteAgentSpace`, `devops-agent:AssociateAccount`, `devops-agent:EnableOperatorApp`, `devops-agent:RegisterService`, `devops-agent:DeregisterService`, `devops-agent:AssociateService`, `devops-agent:DisassociateService`, `devops-agent:GetAgentSpace`, `devops-agent:ListAssociations` | Steps 8–12 (DevOps Agent setup) |
 | `sts:GetCallerIdentity` | Prerequisites (get account ID) |
 
-> **Tip:** If you're using an admin role or the workshop-provided role, you already have these. For production, scope permissions to the specific resources.
-
 ### Environment Setup
 
 ```bash
