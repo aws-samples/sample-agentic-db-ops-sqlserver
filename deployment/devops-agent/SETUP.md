@@ -8,6 +8,24 @@ This guide breaks down the entire DevOps Agent integration into individual CLI c
 
 ## Prerequisites
 
+### IAM Permissions Required
+
+The IAM user or role running these commands needs the following permissions (in addition to the existing `AgentCoreDBOpsRole` used by the agents themselves):
+
+| Permission | Used By |
+|-----------|---------|
+| `lambda:CreateFunction`, `lambda:UpdateFunctionCode`, `lambda:AddPermission`, `lambda:DeleteFunction`, `lambda:GetFunction` | Steps 1–4 (deploy Lambda functions) |
+| `lambda:PublishLayerVersion`, `lambda:ListLayerVersions`, `lambda:DeleteLayerVersion` | Step 1 (pymssql layer) |
+| `iam:CreateRole`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:DeleteRole`, `iam:PassRole` | Step 7 (DevOps Agent IAM roles) |
+| `cognito-idp:CreateUserPool`, `cognito-idp:CreateUserPoolClient`, `cognito-idp:DeleteUserPool` | Step 5 (OAuth authorizer via SDK) |
+| `bedrock-agentcore:CreateMcpGateway`, `bedrock-agentcore:CreateMcpGatewayTarget`, `bedrock-agentcore:DeleteMcpGateway` | Step 5 (Gateway creation via SDK) |
+| `devops-agent:CreateAgentSpace`, `devops-agent:DeleteAgentSpace`, `devops-agent:AssociateAccount`, `devops-agent:EnableOperatorApp`, `devops-agent:RegisterService`, `devops-agent:DeregisterService`, `devops-agent:AssociateService`, `devops-agent:DisassociateService`, `devops-agent:GetAgentSpace`, `devops-agent:ListAssociations` | Steps 8–12 (DevOps Agent setup) |
+| `sts:GetCallerIdentity` | Prerequisites (get account ID) |
+
+> **Tip:** If you're using an admin role or the workshop-provided role, you already have these. For production, scope permissions to the specific resources.
+
+### Environment Setup
+
 ```bash
 # Navigate to this directory (all commands assume you're here)
 cd deployment/devops-agent
