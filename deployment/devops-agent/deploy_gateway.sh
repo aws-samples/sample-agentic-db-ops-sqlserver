@@ -1,0 +1,168 @@
+#!/bin/bash
+# deploy_gateway.sh - Deploy SQL Server diagnostic tools as MCP endpoints via AgentCore Gateway
+#
+# Creates 2 Lambda functions (health + query tools), a Cognito OAuth authorizer,
+# and an AgentCore Gateway with all tools registered. Outputs gateway_config.json.
+#
+# Prerequisites:
+#   - .env sourced (SUBNET1, SECURITY_GROUP_ID, AGENTCORE_ROLE_ARN, DB_SECRET_ID, DB_INSTANCE_ID, AWS_REGION, SNS_TOPIC_NAME)
+#   - bedrock-agentcore-starter-toolkit installed
+#   - pymssql Lambda layer available (pymssql-layer-3.12.zip)
+#
+# Usage:
+#   ./deploy_gateway.sh           # Deploy
+#   ./deploy_gateway.sh --cleanup # Remove everything
+
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$SCRIPT_DIR/../.."
+
+source "$ROOT_DIR/.env"
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  🌐 AgentCore Gateway — MCP Endpoint Deployment             ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+
+# Cleanup mode
+if [ "$1" == "--cleanup" ]; then
+    echo "🧹 Cleaning up Gateway resources..."
+    python3 "$SCRIPT_DIR/setup_gateway.py" --cleanup
+    echo "  Deleting Lambda functions..."
+    aws lambda delete-function --function-name dbops-health-tools --region $AWS_REGION 2>/dev/null || true
+    aws lambda delete-function --function-name dbops-query-tools --region $AWS_REGION 2>/dev/null || true
+    echo "  Deleting Lambda layer..."
+    LAYER_VERSION=$(aws lambda list-layer-versions --layer-name pymssql-layer --region $AWS_REGION --query 'LayerVersions[0].Version' --output text 2>/dev/null || echo "")
+    if [ -n "$LAYER_VERSION" ] && [ "$LAYER_VERSION" != "None" ]; then
+        aws lambda delete-layer-version --layer-name pymssql-layer --version-number $LAYER_VERSION --region $AWS_REGION
+    fi
+    rm -f "$SCRIPT_DIR/gateway_config.json"
+    echo "✅ Cleanup complete"
+    exit 0
+fi
+
+# Validate environment
+echo "┌──────────────────────────────────────────────────────────────┐"
+echo "│  🔍 Validating environment                                    │"
+echo "└──────────────────────────────────────────────────────────────┘"
+for var in AWS_REGION SUBNET1 SECURITY_GROUP_ID AGENTCORE_ROLE_ARN DB_SECRET_ID DB_INSTANCE_ID SNS_TOPIC_NAME; do
+    if [ -z "${!var}" ]; then
+        echo "  ❌ $var is not set"
+        exit 1
+    fi
+    echo "  ✅ $var=${!var}"
+done
+echo ""
+
+# Publish pymssql Lambda layer
+echo "┌──────────────────────────────────────────────────────────────┐"
+echo "│  📦 Publishing pymssql Lambda layer                           │"
+echo "└──────────────────────────────────────────────────────────────┘"
+if [ ! -f "$SCRIPT_DIR/pymssql-layer-3.12.zip" ]; then
+    echo "  ⚠️  pymssql-layer-3.12.zip not found. Building..."
+    pip install pymssql -t /tmp/pymssql-layer/python --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.12 -q
+    cd /tmp/pymssql-layer && zip -r "$SCRIPT_DIR/pymssql-layer-3.12.zip" python -q && cd "$SCRIPT_DIR"
+    rm -rf /tmp/pymssql-layer
+fi
+LAYER_ARN=$(aws lambda publish-layer-version \
+    --layer-name pymssql-layer \
+    --compatible-runtimes python3.12 \
+    --zip-file fileb://$SCRIPT_DIR/pymssql-layer-3.12.zip \
+    --region $AWS_REGION \
+    --query 'LayerVersionArn' --output text)
+echo "  ✅ Layer: $LAYER_ARN"
+echo ""
+
+# Package Lambda functions
+echo "┌──────────────────────────────────────────────────────────────┐"
+echo "│  📦 Packaging Lambda functions                                │"
+echo "└──────────────────────────────────────────────────────────────┘"
+TOOLS_DIR="$ROOT_DIR/db-engines/sql-server/tools"
+CONFIG_DIR="$ROOT_DIR/db-engines/sql-server/config"
+
+STAGE=$(mktemp -d)
+trap "rm -rf $STAGE" EXIT
+
+# Health tools Lambda
+mkdir -p "$STAGE/health"
+cp "$SCRIPT_DIR/gateway_tools/health_handler.py" "$STAGE/health/lambda_function.py"
+cp "$TOOLS_DIR/database_health_tools.py" "$STAGE/health/"
+cp "$TOOLS_DIR/shared_utils.py" "$STAGE/health/"
+cp -r "$CONFIG_DIR" "$STAGE/health/config"
+cd "$STAGE/health" && zip -r "$SCRIPT_DIR/health-tools.zip" . -q && cd "$SCRIPT_DIR"
+
+# Query tools Lambda
+mkdir -p "$STAGE/query"
+cp "$SCRIPT_DIR/gateway_tools/query_handler.py" "$STAGE/query/lambda_function.py"
+cp "$TOOLS_DIR/query_performance_tools.py" "$STAGE/query/"
+cp "$TOOLS_DIR/shared_utils.py" "$STAGE/query/"
+cp -r "$CONFIG_DIR" "$STAGE/query/config"
+cd "$STAGE/query" && zip -r "$SCRIPT_DIR/query-tools.zip" . -q && cd "$SCRIPT_DIR"
+echo "  ✅ health-tools.zip"
+echo "  ✅ query-tools.zip"
+echo ""
+
+# Deploy Lambda functions
+echo "┌──────────────────────────────────────────────────────────────┐"
+echo "│  🚀 Deploying Lambda functions                                │"
+echo "└──────────────────────────────────────────────────────────────┘"
+SUBNET2="${SUBNET2:-$SUBNET1}"
+
+for FUNC in health query; do
+    FUNC_NAME="dbops-${FUNC}-tools"
+    echo "  Deploying $FUNC_NAME..."
+
+    # Create or update
+    if aws lambda get-function --function-name $FUNC_NAME --region $AWS_REGION 2>/dev/null; then
+        aws lambda update-function-code \
+            --function-name $FUNC_NAME \
+            --zip-file fileb://$SCRIPT_DIR/${FUNC}-tools.zip \
+            --region $AWS_REGION --output text --query 'FunctionArn' > /dev/null
+    else
+        aws lambda create-function \
+            --function-name $FUNC_NAME \
+            --runtime python3.12 \
+            --handler lambda_function.lambda_handler \
+            --role $AGENTCORE_ROLE_ARN \
+            --zip-file fileb://$SCRIPT_DIR/${FUNC}-tools.zip \
+            --layers $LAYER_ARN \
+            --timeout 60 \
+            --memory-size 256 \
+            --vpc-config SubnetIds=$SUBNET1,$SUBNET2,SecurityGroupIds=$SECURITY_GROUP_ID \
+            --environment "Variables={DB_INSTANCE_ID=$DB_INSTANCE_ID,DB_SECRET_ID=$DB_SECRET_ID,AWS_REGION_NAME=$AWS_REGION,SNS_TOPIC_NAME=$SNS_TOPIC_NAME}" \
+            --region $AWS_REGION --output text --query 'FunctionArn' > /dev/null
+    fi
+
+    # Grant Gateway invoke permission
+    aws lambda add-permission \
+        --function-name $FUNC_NAME \
+        --statement-id agentcore-gateway-invoke \
+        --action lambda:InvokeFunction \
+        --principal bedrock-agentcore.amazonaws.com \
+        --region $AWS_REGION 2>/dev/null || true
+
+    echo "  ✅ $FUNC_NAME deployed"
+done
+echo ""
+
+# Create Gateway (Cognito + Gateway + targets)
+echo "┌──────────────────────────────────────────────────────────────┐"
+echo "│  🌐 Creating AgentCore Gateway                                │"
+echo "└──────────────────────────────────────────────────────────────┘"
+python3 "$SCRIPT_DIR/setup_gateway.py"
+echo ""
+
+# Cleanup build artifacts
+rm -f "$SCRIPT_DIR/health-tools.zip" "$SCRIPT_DIR/query-tools.zip"
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  🎉 AgentCore Gateway deployment complete!                    ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
+echo "║  🌐 Gateway URL: $GATEWAY_URL"
+echo "║  🔧 Total tools: 27                                          ║"
+echo "║                                                              ║"
+echo "║  Lambda Functions:                                           ║"
+echo "║    📊 dbops-health-tools     (14 tools)                      ║"
+echo "║    ⚡ dbops-query-tools      (13 tools)                      ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
