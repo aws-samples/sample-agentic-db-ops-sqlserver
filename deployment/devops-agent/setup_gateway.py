@@ -58,17 +58,12 @@ QUERY_TOOLS = [
 def deploy():
     client = GatewayClient(region_name=REGION)
 
-    # Create Cognito OAuth authorizer
-    print("  Creating Cognito OAuth authorizer...")
-    cognito_response = client.create_oauth_authorizer_with_cognito(GATEWAY_NAME)
-    print("  ✅ Cognito authorizer created")
-
-    # Create MCP Gateway
-    print("  Creating MCP Gateway...")
+    # Create MCP Gateway with IAM auth
+    print("  Creating MCP Gateway (IAM auth)...")
     gateway = client.create_mcp_gateway(
         name=GATEWAY_NAME,
         role_arn=ROLE_ARN,
-        authorizer_config=cognito_response["authorizer_config"],
+        authorizer_type="AWS_IAM",
     )
     gateway_url = gateway.get("gatewayUrl") or gateway.get("gateway_url")
     print(f"  ✅ Gateway created: {gateway_url}")
@@ -104,7 +99,6 @@ def deploy():
     # Save config
     config = {
         "gateway_url": gateway_url,
-        "client_info": cognito_response["client_info"],
         "region": REGION,
         "total_tools": 27,
     }
@@ -119,13 +113,6 @@ def cleanup():
     try:
         client.delete_mcp_gateway(name=GATEWAY_NAME)
         print("  ✅ Gateway deleted")
-    except Exception as e:
-        print(f"  ⚠️  {e}")
-
-    print("  Deleting Cognito resources...")
-    try:
-        client.delete_oauth_authorizer_with_cognito(GATEWAY_NAME)
-        print("  ✅ Cognito resources deleted")
     except Exception as e:
         print(f"  ⚠️  {e}")
 

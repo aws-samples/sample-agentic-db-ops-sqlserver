@@ -44,18 +44,6 @@ aws iam create-policy \
       "Resource": "*"
     },
     {
-      "Sid": "Cognito",
-      "Effect": "Allow",
-      "Action": [
-        "cognito-idp:CreateUserPool",
-        "cognito-idp:CreateUserPoolClient",
-        "cognito-idp:CreateResourceServer",
-        "cognito-idp:DeleteUserPool",
-        "cognito-idp:DescribeUserPool"
-      ],
-      "Resource": "*"
-    },
-    {
       "Sid": "AgentCoreGateway",
       "Effect": "Allow",
       "Action": [
@@ -216,13 +204,13 @@ aws lambda add-permission \
 
 ## Step 6 — Create MCP Gateway
 
-This creates a Cognito OAuth authorizer, the MCP Gateway, and registers both Lambda targets with tool schemas. Uses the AgentCore SDK (no CLI equivalent exists for Gateway operations).
+This creates an IAM-authenticated MCP Gateway and registers both Lambda targets with tool schemas. Uses the AgentCore SDK (no CLI equivalent exists for Gateway operations).
 
 ```bash
 python3 deployment/devops-agent/setup_gateway.py
 ```
 
-Outputs `gateway_config.json` with the Gateway URL and OAuth credentials.
+Outputs `gateway_config.json` with the Gateway URL.
 
 ---
 
@@ -233,6 +221,8 @@ python3 deployment/devops-agent/agent_gateway.py
 ```
 
 Ask `What is the current CPU utilization?` to confirm tools work end-to-end. Type `exit` to quit.
+
+> **Note:** Uses IAM auth by default (signs requests with your AWS credentials). For Cognito OAuth, run with `--cognito` flag.
 
 ---
 
@@ -305,14 +295,11 @@ aws devops-agent enable-operator-app \
 
 ```bash
 GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
-CLIENT_ID=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['client_info']['client_id'])")
-CLIENT_SECRET=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['client_info']['client_secret'])")
-TOKEN_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['client_info']['token_endpoint'])")
 
 export MCP_SERVICE_ID=$(aws devops-agent register-service \
-  --service mcpserver \
+  --service mcpserversigv4 \
   --name "dbops-mcp" \
-  --service-details "{\"mcpserver\": {\"name\": \"dbops-mcp\", \"endpoint\": \"$GATEWAY_URL\", \"description\": \"SQL Server diagnostic tools via AgentCore Gateway\", \"authorizationConfig\": {\"oAuthClientCredentials\": {\"clientName\": \"AgentCore-Gateway-OAuth\", \"clientId\": \"$CLIENT_ID\", \"clientSecret\": \"$CLIENT_SECRET\", \"exchangeUrl\": \"$TOKEN_URL\"}}}}" \
+  --service-details "{\"mcpserversigv4\": {\"name\": \"dbops-mcp\", \"endpoint\": \"$GATEWAY_URL\", \"description\": \"SQL Server diagnostic tools via AgentCore Gateway\", \"authorizationConfig\": {\"region\": \"$AWS_REGION\", \"service\": \"bedrock-agentcore\", \"roleArn\": \"$AGENTCORE_ROLE_ARN\"}}}" \
   --region $AWS_REGION \
   --query 'serviceId' --output text)
 
