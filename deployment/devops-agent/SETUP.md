@@ -107,11 +107,16 @@ aws iam attach-role-policy \
 ### Environment
 
 ```bash
-cd deployment/devops-agent
-source ../../.env
-source ../../.venv/bin/activate
-pip install bedrock-agentcore-starter-toolkit mcp strands-agents strands-agents-tools -q
+export AWS_REGION=us-west-2
 export AWS_ACCOUNTID=$(aws sts get-caller-identity --query Account --output text)
+export DB_INSTANCE_ID=your-rds-instance-id
+export DB_SECRET_ID=arn:aws:secretsmanager:us-west-2:123456789012:secret:your-secret-name
+export SNS_TOPIC_NAME=your-sns-topic-name
+export SECURITY_GROUP_ID=sg-xxxxxxxxx
+export SUBNET1=subnet-xxxxxxxxx
+export AGENTCORE_ROLE_ARN=arn:aws:iam::123456789012:role/AgentCoreDBOpsRole
+
+pip install bedrock-agentcore-starter-toolkit mcp strands-agents strands-agents-tools -q
 ```
 
 ---
