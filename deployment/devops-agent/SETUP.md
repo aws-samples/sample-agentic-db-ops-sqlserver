@@ -137,7 +137,6 @@ export LAYER_ARN=$(aws lambda publish-layer-version \
   --query 'LayerVersionArn' --output text)
 
 echo "Layer ARN: $LAYER_ARN"
-rm -rf /tmp/pymssql-layer
 ```
 
 ---
@@ -145,23 +144,8 @@ rm -rf /tmp/pymssql-layer
 ## Step 2 — Package Lambda Functions
 
 ```bash
-TOOLS_DIR=../../db-engines/sql-server/tools
-CONFIG_DIR=../../db-engines/sql-server/config
-
-rm -rf /tmp/health-pkg /tmp/query-pkg
-mkdir -p /tmp/health-pkg /tmp/query-pkg
-
-cp gateway_tools/health_handler.py /tmp/health-pkg/lambda_function.py
-cp $TOOLS_DIR/database_health_tools.py /tmp/health-pkg/
-cp $TOOLS_DIR/shared_utils.py /tmp/health-pkg/
-cp -r $CONFIG_DIR /tmp/health-pkg/config
-cd /tmp/health-pkg && zip -r /tmp/health-tools.zip . -q && cd -
-
-cp gateway_tools/query_handler.py /tmp/query-pkg/lambda_function.py
-cp $TOOLS_DIR/query_performance_tools.py /tmp/query-pkg/
-cp $TOOLS_DIR/shared_utils.py /tmp/query-pkg/
-cp -r $CONFIG_DIR /tmp/query-pkg/config
-cd /tmp/query-pkg && zip -r /tmp/query-tools.zip . -q && cd -
+cd lambda/health && zip -r /tmp/health-tools.zip . -q && cd -
+cd lambda/query && zip -r /tmp/query-tools.zip . -q && cd -
 ```
 
 ---
@@ -204,12 +188,6 @@ aws lambda create-function \
   --environment "Variables={DB_INSTANCE_ID=$DB_INSTANCE_ID,DB_SECRET_ID=$DB_SECRET_ID,AWS_REGION_NAME=$AWS_REGION,SNS_TOPIC_NAME=$SNS_TOPIC_NAME}" \
   --region $AWS_REGION \
   --query 'FunctionArn' --output text
-```
-
-Clean up temp files:
-
-```bash
-rm -rf /tmp/health-pkg /tmp/query-pkg /tmp/health-tools.zip /tmp/query-tools.zip
 ```
 
 ---
@@ -398,6 +376,4 @@ aws lambda delete-layer-version --layer-name pymssql-layer --version-number $LAY
 
 aws iam detach-role-policy --role-name <YOUR_OPERATOR_ROLE> --policy-arn arn:aws:iam::${AWS_ACCOUNTID}:policy/DevOpsAgentSetupPolicy
 aws iam delete-policy --policy-arn arn:aws:iam::${AWS_ACCOUNTID}:policy/DevOpsAgentSetupPolicy
-
-rm -f gateway_config.json sql-server-investigation.zip
 ```
