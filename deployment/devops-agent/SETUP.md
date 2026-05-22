@@ -116,7 +116,7 @@ export SECURITY_GROUP_ID=sg-xxxxxxxxx
 export SUBNET1=subnet-xxxxxxxxx
 export AGENTCORE_ROLE_ARN=arn:aws:iam::123456789012:role/AgentCoreDBOpsRole
 
-pip install bedrock-agentcore-starter-toolkit mcp strands-agents strands-agents-tools -q
+python3 -m pip install bedrock-agentcore-starter-toolkit mcp strands-agents strands-agents-tools -q
 ```
 
 ---
@@ -124,7 +124,7 @@ pip install bedrock-agentcore-starter-toolkit mcp strands-agents strands-agents-
 ## Step 1 — Publish pymssql Lambda Layer
 
 ```bash
-pip install pymssql -t /tmp/pymssql-layer/python \
+python3 -m pip install pymssql -t /tmp/pymssql-layer/python \
   --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.12 -q
 
 cd /tmp/pymssql-layer && zip -r pymssql-layer-3.12.zip python -q && cd -
@@ -143,9 +143,11 @@ echo "Layer ARN: $LAYER_ARN"
 
 ## Step 2 — Package Lambda Functions
 
+From the repo root:
+
 ```bash
-cd lambda/health && zip -r /tmp/health-tools.zip . -q && cd -
-cd lambda/query && zip -r /tmp/query-tools.zip . -q && cd -
+cd deployment/devops-agent/lambda/health && zip -r /tmp/health-tools.zip . -q && cd -
+cd deployment/devops-agent/lambda/query && zip -r /tmp/query-tools.zip . -q && cd -
 ```
 
 ---
@@ -217,7 +219,7 @@ aws lambda add-permission \
 This creates a Cognito OAuth authorizer, the MCP Gateway, and registers both Lambda targets with tool schemas. Uses the AgentCore SDK (no CLI equivalent exists for Gateway operations).
 
 ```bash
-python3 setup_gateway.py
+python3 deployment/devops-agent/setup_gateway.py
 ```
 
 Outputs `gateway_config.json` with the Gateway URL and OAuth credentials.
@@ -227,7 +229,7 @@ Outputs `gateway_config.json` with the Gateway URL and OAuth credentials.
 ## Step 7 — Verify Gateway
 
 ```bash
-python3 agent_gateway.py
+python3 deployment/devops-agent/agent_gateway.py
 ```
 
 Ask `What is the current CPU utilization?` to confirm tools work end-to-end. Type `exit` to quit.
@@ -239,15 +241,20 @@ Ask `What is the current CPU utilization?` to confirm tools work end-to-end. Typ
 ```bash
 aws iam create-role \
   --role-name DevOpsAgentRole-AgentSpace \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"aidevops.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"aidevops.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"'$AWS_ACCOUNTID'"},"ArnLike":{"aws:SourceArn":"arn:aws:aidevops:'$AWS_REGION':'$AWS_ACCOUNTID':agentspace/*"}}}]}'
 
 aws iam attach-role-policy \
   --role-name DevOpsAgentRole-AgentSpace \
   --policy-arn arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy
 
+aws iam put-role-policy \
+  --role-name DevOpsAgentRole-AgentSpace \
+  --policy-name AllowCreateServiceLinkedRoles \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowCreateServiceLinkedRoles\",\"Effect\":\"Allow\",\"Action\":[\"iam:CreateServiceLinkedRole\"],\"Resource\":[\"arn:aws:iam::${AWS_ACCOUNTID}:role/aws-service-role/resource-explorer-2.amazonaws.com/AWSServiceRoleForResourceExplorer\"]}]}"
+
 aws iam create-role \
   --role-name DevOpsAgentRole-WebappAdmin \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"aidevops.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"aidevops.amazonaws.com"},"Action":["sts:AssumeRole","sts:TagSession"],"Condition":{"StringEquals":{"aws:SourceAccount":"'$AWS_ACCOUNTID'"},"ArnLike":{"aws:SourceArn":"arn:aws:aidevops:'$AWS_REGION':'$AWS_ACCOUNTID':agentspace/*"}}}]}'
 
 aws iam attach-role-policy \
   --role-name DevOpsAgentRole-WebappAdmin \
@@ -260,10 +267,10 @@ aws iam attach-role-policy \
 
 ```bash
 export AGENT_SPACE_ID=$(aws devops-agent create-agent-space \
-  --space-name sql-server-dbops \
-  --role-arn arn:aws:iam::${AWS_ACCOUNTID}:role/DevOpsAgentRole-AgentSpace \
+  --name sql-server-dbops \
+  --description "Agent Space for SQL Server database operations" \
   --region $AWS_REGION \
-  --query 'agentSpaceId' --output text)
+  --query 'agentSpace.agentSpaceId' --output text)
 
 echo "Agent Space ID: $AGENT_SPACE_ID"
 ```
@@ -273,9 +280,10 @@ echo "Agent Space ID: $AGENT_SPACE_ID"
 ## Step 10 — Associate AWS Account
 
 ```bash
-aws devops-agent associate-account \
+aws devops-agent associate-service \
   --agent-space-id $AGENT_SPACE_ID \
-  --account-id $AWS_ACCOUNTID \
+  --service-id aws \
+  --configuration "{\"aws\": {\"assumableRoleArn\": \"arn:aws:iam::${AWS_ACCOUNTID}:role/DevOpsAgentRole-AgentSpace\", \"accountId\": \"$AWS_ACCOUNTID\", \"accountType\": \"monitor\"}}" \
   --region $AWS_REGION
 ```
 
@@ -286,7 +294,8 @@ aws devops-agent associate-account \
 ```bash
 aws devops-agent enable-operator-app \
   --agent-space-id $AGENT_SPACE_ID \
-  --role-arn arn:aws:iam::${AWS_ACCOUNTID}:role/DevOpsAgentRole-WebappAdmin \
+  --auth-flow iam \
+  --operator-app-role-arn arn:aws:iam::${AWS_ACCOUNTID}:role/DevOpsAgentRole-WebappAdmin \
   --region $AWS_REGION
 ```
 
@@ -327,12 +336,12 @@ aws devops-agent associate-service \
 ## Step 14 — Upload Investigation Skill
 
 ```bash
-cd skills && zip -r ../sql-server-investigation.zip sql-server-investigation/ -q && cd ..
+cd deployment/devops-agent/skills && zip -r ../sql-server-investigation.zip sql-server-investigation/ -q && cd -
 ```
 
 1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
 2. Click **sql-server-dbops** → **Operator access** → **Skills** → **Add skill** → **Upload skill**
-3. Select `sql-server-investigation.zip`, Agent Type = **Generic**, click **Upload**
+3. Select `deployment/devops-agent/sql-server-investigation.zip`, Agent Type = **Generic**, click **Upload**
 
 ---
 
@@ -366,7 +375,7 @@ aws iam delete-role --role-name DevOpsAgentRole-AgentSpace
 aws iam detach-role-policy --role-name DevOpsAgentRole-WebappAdmin --policy-arn arn:aws:iam::aws:policy/AIDevOpsOperatorAppAccessPolicy
 aws iam delete-role --role-name DevOpsAgentRole-WebappAdmin
 
-python3 setup_gateway.py --cleanup
+python3 deployment/devops-agent/setup_gateway.py --cleanup
 
 aws lambda delete-function --function-name dbops-health-tools --region $AWS_REGION
 aws lambda delete-function --function-name dbops-query-tools --region $AWS_REGION

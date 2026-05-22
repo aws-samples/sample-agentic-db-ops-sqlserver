@@ -2,9 +2,9 @@ import boto3
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
-from strands import tool
+def tool(fn): return fn  # stub for Lambda
 from config.settings import DB_INSTANCE_ID, AWS_REGION, SNS_TOPIC_NAME
-from tools.shared_utils import send_notification
+from shared_utils import send_notification
 
 
 def get_pi_client():

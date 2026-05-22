@@ -8,8 +8,8 @@ from query_performance_tools import (
     get_query_store_plan_summary, get_query_store_regressed_queries,
     get_query_store_top_queries, get_query_store_wait_stats,
     get_slow_queries, suggest_indexes,
+    send_email_notification,
 )
-from shared_utils import send_notification
 
 TOOL_MAP = {
     "check_query_store_enabled": check_query_store_enabled,
@@ -24,21 +24,24 @@ TOOL_MAP = {
     "get_expensive_queries_from_cache": get_expensive_queries_from_cache,
     "suggest_indexes": suggest_indexes,
     "get_index_usage": get_index_usage,
-    "send_email_notification": lambda subject, message, severity="INFO": send_notification(subject, message, severity, "Query Performance"),
+    "send_email_notification": send_email_notification,
 }
 
 
 def lambda_handler(event, context):
-    tool_name = event.get("name") or event.get("tool_name")
-    arguments = event.get("arguments") or event.get("input", {})
-    if isinstance(arguments, str):
-        arguments = json.loads(arguments)
+    tool_name = ''
+    if hasattr(context, 'client_context') and context.client_context and hasattr(context.client_context, 'custom') and context.client_context.custom:
+        tool_name = context.client_context.custom.get('bedrockAgentCoreToolName', '')
+
+    if '___' in tool_name:
+        tool_name = tool_name.split('___', 1)[1]
 
     func = TOOL_MAP.get(tool_name)
     if not func:
-        return {"error": f"Unknown tool: {tool_name}", "available": list(TOOL_MAP.keys())}
+        return json.dumps({"error": f"Unknown tool: {tool_name}", "available_tools": list(TOOL_MAP.keys())})
 
     try:
-        return {"result": func(**arguments)}
+        result = func(**event) if event else func()
+        return json.dumps(result, default=str)
     except Exception as e:
-        return {"error": str(e), "tool": tool_name}
+        return json.dumps({"error": str(e)})

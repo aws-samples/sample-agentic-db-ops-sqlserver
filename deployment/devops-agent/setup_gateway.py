@@ -70,7 +70,8 @@ def deploy():
         role_arn=ROLE_ARN,
         authorizer_config=cognito_response["authorizer_config"],
     )
-    print(f"  ✅ Gateway created: {gateway['gateway_url']}")
+    gateway_url = gateway.get("gatewayUrl") or gateway.get("gateway_url")
+    print(f"  ✅ Gateway created: {gateway_url}")
 
     # Register health tools target
     health_arn = f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:dbops-health-tools"
@@ -102,7 +103,7 @@ def deploy():
 
     # Save config
     config = {
-        "gateway_url": gateway["gateway_url"],
+        "gateway_url": gateway_url,
         "client_info": cognito_response["client_info"],
         "region": REGION,
         "total_tools": 27,

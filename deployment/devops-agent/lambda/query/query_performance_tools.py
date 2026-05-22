@@ -3,9 +3,9 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
-from strands import tool
+def tool(fn): return fn  # stub for Lambda
 from config.settings import DB_INSTANCE_ID, DB_SECRET_ID, AWS_REGION, SNS_TOPIC_NAME
-from tools.shared_utils import db_cursor, fetch_all, send_notification
+from shared_utils import db_cursor, fetch_all, send_notification
 
 
 def _validate_int(value, name, min_val=1, max_val=10000):
