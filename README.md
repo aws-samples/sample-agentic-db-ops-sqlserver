@@ -325,7 +325,7 @@ aws cloudformation delete-stack --stack-name dbops-infra
 
 ## Networking
 
-All agents run in private subnets with no internet access. AWS service communication happens exclusively through VPC endpoints. This keeps all traffic on the AWS network and eliminates the need for a NAT gateway.
+All agents run in private subnets with no direct internet access. AWS service communication happens exclusively through VPC endpoints. This keeps all traffic on the AWS network and eliminates the need for a NAT gateway.
 
 See [config/settings.py](db-engines/sql-server/config/settings.py) for the full VPC endpoint list with descriptions of which agent uses each endpoint.
 
