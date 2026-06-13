@@ -6,6 +6,13 @@ Connect your SQL Server diagnostic tools to AWS DevOps Agent for managed, zero-c
 
 ## Prerequisites
 
+### Tooling
+
+- **AWS CLI v2.35 or later.** Earlier versions do not support the `mcpserversigv4`
+  MCP service type used in Step 12 (you'll get
+  `Unknown parameter in serviceDetails: "mcpserversigv4"`). Check with
+  `aws --version` and upgrade if needed.
+
 ### IAM Permissions
 
 Create a policy with these permissions and attach it to your operator role before starting:
