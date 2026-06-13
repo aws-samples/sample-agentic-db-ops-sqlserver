@@ -7,7 +7,7 @@ CloudFormation templates and IAM policy documents for infrastructure setup.
 | Role | Who Uses It | Purpose |
 |------|-------------|---------|
 | **AgentCore Execution Role** | AgentCore Runtime (cloud) | Assumed by agents to call AWS services (Bedrock, RDS, CloudWatch, etc.) |
-| **Operator Role** | You / your server / CI/CD | Assumed by the person running `agentcore deploy`, `agentcore invoke`, and `./deploy.sh` |
+| **Operator Role** | You / your server / CI/CD | Assumed by the person running `agentcore deploy`, `agentcore invoke`, and `./deployment/agentcore/deploy.sh` |
 
 ---
 
@@ -52,7 +52,7 @@ export AGENTCORE_ROLE_ARN=$(aws iam get-role --role-name AgentCoreDBOpsRole --qu
 
 ## 2. Operator Role
 
-The permissions needed on the machine where you run `deploy.sh` and `agentcore invoke`. Attach `operator-policy.json` to your IAM user, role, or instance profile.
+The permissions needed on the machine where you run `deployment/agentcore/deploy.sh` and `agentcore invoke`. Attach `operator-policy.json` to your IAM user, role, or instance profile.
 
 ```bash
 # For an IAM user

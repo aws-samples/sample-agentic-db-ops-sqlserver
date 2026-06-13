@@ -21,7 +21,7 @@ Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.
 
 ## Prerequisites
 
-- `deploy.sh` completed (5 agents running on AgentCore Runtime)
+- `deployment/agentcore/deploy.sh` completed (5 agents running on AgentCore Runtime)
 - `.env` sourced with all environment variables
 - Python 3.12+
 - `bedrock-agentcore-starter-toolkit` installed

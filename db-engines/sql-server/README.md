@@ -51,7 +51,7 @@ pip install -r requirements.txt
 From the repo root:
 
 ```bash
-./deploy.sh
+./deployment/agentcore/deploy.sh
 ```
 
 ### 4. Test

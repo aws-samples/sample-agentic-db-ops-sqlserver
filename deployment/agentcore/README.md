@@ -17,7 +17,7 @@ Deploy all 5 SQL Server agents to [Amazon Bedrock AgentCore Runtime](https://doc
 From the repo root:
 
 ```bash
-./deploy.sh
+./deployment/agentcore/deploy.sh
 ```
 
 This script:
@@ -40,5 +40,5 @@ python3 scripts/cleanup_agents.py
 
 | File | Description |
 |------|-------------|
-| `deploy.sh` | Thin wrapper (actual deploy script is at repo root: `./deploy.sh`) |
+| `deploy.sh` | Deploys shared memory + all 5 agents |
 | `cleanup.sh` | Thin wrapper (actual cleanup is `scripts/cleanup_agents.py`) |

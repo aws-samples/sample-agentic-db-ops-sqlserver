@@ -102,7 +102,7 @@ All agents share a single [AgentCore Memory](https://docs.aws.amazon.com/bedrock
 - **Semantic Strategy** — Extracts and stores factual findings (e.g., "CPU spiked to 87% at 14:30 UTC") across all agent sessions. Enables cross-agent knowledge recall without re-running tools.
 - **Summarization Strategy** — Condenses each investigation session into a summary for efficient context retrieval in future sessions.
 
-Memory is created automatically by `deploy.sh` via `scripts/setup_memory.py`. All agents connect to the same shared memory using the `MEMORY_ID` environment variable.
+Memory is created automatically by `deployment/agentcore/deploy.sh` via `scripts/setup_memory.py`. All agents connect to the same shared memory using the `MEMORY_ID` environment variable.
 
 ```
 Session 1: Health Agent finds CPU at 87%
@@ -122,7 +122,7 @@ Session 2: Supervisor asked "what happened today?"
 
 | Path | Description |
 |------|-------------|
-| 📜 `deploy.sh` | Deploys shared memory + all 5 agents |
+| 📜 `deployment/agentcore/deploy.sh` | Deploys shared memory + all 5 agents |
 | 📜 `.env` | Your environment variables (see Quick Start) |
 | **db-engines/sql-server/** | |
 | ├── 🤖 `agents/` | Agent definitions (5 agents) |
@@ -289,7 +289,7 @@ echo "export AGENTCORE_ROLE_ARN=$ROLE_ARN" >> .env
 ### 5. Deploy all agents
 
 ```bash
-./deploy.sh
+./deployment/agentcore/deploy.sh
 ```
 
 This script:
