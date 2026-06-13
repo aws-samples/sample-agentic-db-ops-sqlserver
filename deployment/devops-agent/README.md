@@ -10,12 +10,12 @@ Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.
 │  (Web App)      │     │  (MCP endpoint)   │     │  (your tools)       │
 └─────────────────┘     └──────────────────┘     └─────────────────────┘
         │                        │                         │
-   Skills guide            OAuth + routing          CloudWatch, DMVs,
-   methodology             (Cognito)               Database Insights
+   Skills guide          IAM auth + routing         CloudWatch, DMVs,
+   methodology            (SigV4)                  Database Insights
 ```
 
 1. Your existing tools (health + query) are packaged as Lambda functions
-2. AgentCore Gateway exposes them as MCP endpoints with OAuth authentication
+2. AgentCore Gateway exposes them as MCP endpoints with AWS IAM (SigV4) authentication
 3. DevOps Agent connects to the Gateway and discovers all 27 tools
 4. An investigation skill teaches the agent your structured troubleshooting methodology
 
@@ -28,7 +28,8 @@ Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.
 
 ## Step 1: Deploy the Gateway
 
-This packages your health and query tools as Lambda functions, creates a Cognito OAuth authorizer, and registers everything with AgentCore Gateway.
+This packages your health and query tools as Lambda functions, creates the
+authorizer, and registers everything with AgentCore Gateway.
 
 ```bash
 cd deployment/devops-agent
@@ -36,7 +37,12 @@ chmod +x deploy_gateway.sh
 ./deploy_gateway.sh
 ```
 
-This creates `gateway_config.json` with the Gateway URL and OAuth credentials.
+This creates `gateway_config.json` with the Gateway URL.
+
+> **Prefer to run each step by hand?** `deploy_gateway.sh` automates the gateway
+> setup. For the full manual, step-by-step walkthrough of what it does (IAM policy,
+> publishing the pymssql layer, packaging and creating each Lambda, creating the
+> gateway, and registering targets), see [SETUP.md](SETUP.md).
 
 ### Verify Gateway
 
@@ -48,77 +54,30 @@ Ask: "What is the current CPU utilization?" — confirms tools work end-to-end v
 
 ## Step 2: Create the Agent Space
 
-```bash
-export AWS_ACCOUNTID=$(aws sts get-caller-identity --query Account --output text)
+Create the Agent Space IAM roles, the Agent Space itself, associate your AWS
+account, and enable the Web App. These steps are documented in detail in
+[SETUP.md](SETUP.md) — see:
 
-# Create Agent Space IAM role
-aws iam create-role \
-  --role-name DevOpsAgentRole-AgentSpace \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"aidevops.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
-  --region $AWS_REGION
+- **Step 8 — Create Agent Space IAM Roles**
+- **Step 9 — Create Agent Space**
+- **Step 10 — Associate AWS Account**
+- **Step 11 — Enable Web App**
 
-aws iam attach-role-policy \
-  --role-name DevOpsAgentRole-AgentSpace \
-  --policy-arn arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy
-
-# Create Operator App IAM role (enables Web App)
-aws iam create-role \
-  --role-name DevOpsAgentRole-WebappAdmin \
-  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"aidevops.amazonaws.com"},"Action":"sts:AssumeRole"}]}' \
-  --region $AWS_REGION
-
-aws iam attach-role-policy \
-  --role-name DevOpsAgentRole-WebappAdmin \
-  --policy-arn arn:aws:iam::aws:policy/AIDevOpsOperatorAppAccessPolicy
-
-# Create Agent Space
-export AGENT_SPACE_ID=$(aws devops-agent create-agent-space \
-  --space-name sql-server-dbops \
-  --role-arn arn:aws:iam::${AWS_ACCOUNTID}:role/DevOpsAgentRole-AgentSpace \
-  --region $AWS_REGION \
-  --query 'agentSpaceId' --output text)
-
-echo "Agent Space ID: $AGENT_SPACE_ID"
-
-# Associate your AWS account
-aws devops-agent associate-account \
-  --agent-space-id $AGENT_SPACE_ID \
-  --account-id $AWS_ACCOUNTID \
-  --region $AWS_REGION
-
-# Enable the Web App
-aws devops-agent enable-operator-app \
-  --agent-space-id $AGENT_SPACE_ID \
-  --role-arn arn:aws:iam::${AWS_ACCOUNTID}:role/DevOpsAgentRole-WebappAdmin \
-  --region $AWS_REGION
-```
+> Run them from `deployment/devops-agent/` with `.env` sourced (so `$AWS_REGION`,
+> `$AWS_ACCOUNTID`, and `$AGENTCORE_ROLE_ARN` are set). They export
+> `$AGENT_SPACE_ID`, which the next step uses.
 
 ## Step 3: Connect Gateway as MCP Server
 
-```bash
-# Load Gateway config
-GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
-CLIENT_ID=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['client_info']['client_id'])")
-CLIENT_SECRET=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['client_info']['client_secret'])")
-TOKEN_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['client_info']['token_endpoint'])")
+Register the AgentCore Gateway (deployed in Step 1) as an MCP server on the Agent
+Space and allowlist all 27 tools. The gateway uses AWS IAM (SigV4) auth. These
+steps are documented in detail in [SETUP.md](SETUP.md) — see:
 
-# Register MCP server
-export MCP_SERVICE_ID=$(aws devops-agent register-service \
-  --service mcpserver \
-  --name "dbops-mcp" \
-  --service-details "{\"mcpserver\": {\"name\": \"dbops-mcp\", \"endpoint\": \"$GATEWAY_URL\", \"description\": \"SQL Server diagnostic tools via AgentCore Gateway\", \"authorizationConfig\": {\"oAuthClientCredentials\": {\"clientName\": \"AgentCore-Gateway-OAuth\", \"clientId\": \"$CLIENT_ID\", \"clientSecret\": \"$CLIENT_SECRET\", \"exchangeUrl\": \"$TOKEN_URL\"}}}}" \
-  --region $AWS_REGION \
-  --query 'serviceId' --output text)
+- **Step 12 — Register Gateway as MCP Server**
+- **Step 13 — Allowlist Tools**
 
-echo "MCP Service ID: $MCP_SERVICE_ID"
-
-# Associate with Agent Space and allowlist all 27 tools
-aws devops-agent associate-service \
-  --agent-space-id $AGENT_SPACE_ID \
-  --service-id $MCP_SERVICE_ID \
-  --configuration '{"mcpserver": {"tools": ["dbops-health-tools___get_applications", "dbops-health-tools___get_cpu_utilization", "dbops-health-tools___get_database_connections", "dbops-health-tools___get_database_load", "dbops-health-tools___get_extended_database_load", "dbops-health-tools___get_free_storage", "dbops-health-tools___get_freeable_memory", "dbops-health-tools___get_iops", "dbops-health-tools___get_network_throughput", "dbops-health-tools___get_read_write_latency", "dbops-health-tools___get_top_sql", "dbops-health-tools___get_users", "dbops-health-tools___get_wait_events", "dbops-health-tools___send_email_notification", "dbops-query-tools___check_query_store_enabled", "dbops-query-tools___get_blocking_sessions", "dbops-query-tools___get_expensive_queries_from_cache", "dbops-query-tools___get_index_usage", "dbops-query-tools___get_query_execution_history", "dbops-query-tools___get_query_plan_from_cache", "dbops-query-tools___get_query_store_plan_summary", "dbops-query-tools___get_query_store_regressed_queries", "dbops-query-tools___get_query_store_top_queries", "dbops-query-tools___get_query_store_wait_stats", "dbops-query-tools___get_slow_queries", "dbops-query-tools___send_email_notification", "dbops-query-tools___suggest_indexes"]}}' \
-  --region $AWS_REGION
-```
+> These read `gateway_config.json` (from Step 1) for the Gateway URL and use
+> `$AGENT_SPACE_ID` (from Step 2) and `$AGENTCORE_ROLE_ARN`.
 
 ## Step 4: Upload Investigation Skill
 
