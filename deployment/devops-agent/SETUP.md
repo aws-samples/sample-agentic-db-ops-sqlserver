@@ -315,13 +315,36 @@ echo "MCP Service ID: $MCP_SERVICE_ID"
 
 ---
 
+## Step 12b — Grant the SigV4 Role Permission to Invoke the Gateway
+
+The gateway uses AWS IAM (SigV4) inbound auth, so the role used for signing
+(`$AGENTCORE_ROLE_ARN`) must be allowed to invoke the gateway. Without this, the
+next step fails with `403 Authorization error - Insufficient permissions`.
+
+```bash
+GATEWAY_ID=$(aws bedrock-agentcore-control list-gateways --region $AWS_REGION \
+  --query "items[?name=='dbops-mcp-gateway'].gatewayId | [0]" --output text)
+
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+aws iam put-role-policy \
+  --role-name "$ROLE_NAME" \
+  --policy-name InvokeDbopsGateway \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowGatewayInvocation\",\"Effect\":\"Allow\",\"Action\":[\"bedrock-agentcore:InvokeGateway\"],\"Resource\":[\"arn:aws:bedrock-agentcore:${AWS_REGION}:${AWS_ACCOUNTID}:gateway/${GATEWAY_ID}\"]}]}"
+```
+
+---
+
 ## Step 13 — Allowlist Tools
+
+> The `--configuration` key must match the registered service type. Since the
+> service was registered as `mcpserversigv4` (Step 12), the configuration uses the
+> `mcpserversigv4` key (not `mcpserver`).
 
 ```bash
 aws devops-agent associate-service \
   --agent-space-id $AGENT_SPACE_ID \
   --service-id $MCP_SERVICE_ID \
-  --configuration '{"mcpserver": {"tools": ["dbops-health-tools___get_applications", "dbops-health-tools___get_cpu_utilization", "dbops-health-tools___get_database_connections", "dbops-health-tools___get_database_load", "dbops-health-tools___get_extended_database_load", "dbops-health-tools___get_free_storage", "dbops-health-tools___get_freeable_memory", "dbops-health-tools___get_iops", "dbops-health-tools___get_network_throughput", "dbops-health-tools___get_read_write_latency", "dbops-health-tools___get_top_sql", "dbops-health-tools___get_users", "dbops-health-tools___get_wait_events", "dbops-health-tools___send_email_notification", "dbops-query-tools___check_query_store_enabled", "dbops-query-tools___get_blocking_sessions", "dbops-query-tools___get_expensive_queries_from_cache", "dbops-query-tools___get_index_usage", "dbops-query-tools___get_query_execution_history", "dbops-query-tools___get_query_plan_from_cache", "dbops-query-tools___get_query_store_plan_summary", "dbops-query-tools___get_query_store_regressed_queries", "dbops-query-tools___get_query_store_top_queries", "dbops-query-tools___get_query_store_wait_stats", "dbops-query-tools___get_slow_queries", "dbops-query-tools___send_email_notification", "dbops-query-tools___suggest_indexes"]}}' \
+  --configuration '{"mcpserversigv4": {"tools": ["dbops-health-tools___get_applications", "dbops-health-tools___get_cpu_utilization", "dbops-health-tools___get_database_connections", "dbops-health-tools___get_database_load", "dbops-health-tools___get_extended_database_load", "dbops-health-tools___get_free_storage", "dbops-health-tools___get_freeable_memory", "dbops-health-tools___get_iops", "dbops-health-tools___get_network_throughput", "dbops-health-tools___get_read_write_latency", "dbops-health-tools___get_top_sql", "dbops-health-tools___get_users", "dbops-health-tools___get_wait_events", "dbops-health-tools___send_email_notification", "dbops-query-tools___check_query_store_enabled", "dbops-query-tools___get_blocking_sessions", "dbops-query-tools___get_expensive_queries_from_cache", "dbops-query-tools___get_index_usage", "dbops-query-tools___get_query_execution_history", "dbops-query-tools___get_query_plan_from_cache", "dbops-query-tools___get_query_store_plan_summary", "dbops-query-tools___get_query_store_regressed_queries", "dbops-query-tools___get_query_store_top_queries", "dbops-query-tools___get_query_store_wait_stats", "dbops-query-tools___get_slow_queries", "dbops-query-tools___send_email_notification", "dbops-query-tools___suggest_indexes"]}}' \
   --region $AWS_REGION
 ```
 
