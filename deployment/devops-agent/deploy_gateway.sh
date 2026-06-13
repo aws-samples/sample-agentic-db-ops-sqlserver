@@ -77,29 +77,51 @@ echo ""
 echo "┌──────────────────────────────────────────────────────────────┐"
 echo "│  📦 Packaging Lambda functions                                │"
 echo "└──────────────────────────────────────────────────────────────┘"
-TOOLS_DIR="$ROOT_DIR/db-engines/sql-server/tools"
-CONFIG_DIR="$ROOT_DIR/db-engines/sql-server/config"
-
-STAGE=$(mktemp -d)
-trap "rm -rf $STAGE" EXIT
+# Package Lambda functions from the self-contained lambda/<func>/ directories.
+# Each dir already includes lambda_function.py + tools + shared_utils.py + config/,
+# so we zip them directly (matches SETUP.md).
+LAMBDA_DIR="$SCRIPT_DIR/lambda"
 
 # Health tools Lambda
-mkdir -p "$STAGE/health"
-cp "$SCRIPT_DIR/gateway_tools/health_handler.py" "$STAGE/health/lambda_function.py"
-cp "$TOOLS_DIR/database_health_tools.py" "$STAGE/health/"
-cp "$TOOLS_DIR/shared_utils.py" "$STAGE/health/"
-cp -r "$CONFIG_DIR" "$STAGE/health/config"
-cd "$STAGE/health" && zip -r "$SCRIPT_DIR/health-tools.zip" . -q && cd "$SCRIPT_DIR"
+cd "$LAMBDA_DIR/health" && zip -r "$SCRIPT_DIR/health-tools.zip" . -q && cd "$SCRIPT_DIR"
 
 # Query tools Lambda
-mkdir -p "$STAGE/query"
-cp "$SCRIPT_DIR/gateway_tools/query_handler.py" "$STAGE/query/lambda_function.py"
-cp "$TOOLS_DIR/query_performance_tools.py" "$STAGE/query/"
-cp "$TOOLS_DIR/shared_utils.py" "$STAGE/query/"
-cp -r "$CONFIG_DIR" "$STAGE/query/config"
-cd "$STAGE/query" && zip -r "$SCRIPT_DIR/query-tools.zip" . -q && cd "$SCRIPT_DIR"
+cd "$LAMBDA_DIR/query" && zip -r "$SCRIPT_DIR/query-tools.zip" . -q && cd "$SCRIPT_DIR"
 echo "  ✅ health-tools.zip"
 echo "  ✅ query-tools.zip"
+echo ""
+
+# Ensure the execution role can be used by Lambda.
+# AGENTCORE_ROLE_ARN is created trusting only bedrock-agentcore.amazonaws.com.
+# Lambda also needs to assume it (lambda.amazonaws.com), and VPC-attached Lambdas
+# need ENI permissions (AWSLambdaVPCAccessExecutionRole). Make this idempotent.
+echo "┌──────────────────────────────────────────────────────────────┐"
+echo "│  🔐 Preparing execution role for Lambda                       │"
+echo "└──────────────────────────────────────────────────────────────┘"
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+aws iam update-assume-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["bedrock-agentcore.amazonaws.com","lambda.amazonaws.com"]},"Action":"sts:AssumeRole"}]}'
+echo "  ✅ Trust policy allows lambda.amazonaws.com"
+aws iam attach-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole 2>/dev/null || true
+echo "  ✅ AWSLambdaVPCAccessExecutionRole attached"
+
+# With AWS_IAM gateway auth, targets use credentialProviderType=GATEWAY_IAM_ROLE,
+# so the Gateway invokes the Lambdas AS this execution role. That requires an
+# identity-based lambda:InvokeFunction grant on the role (the resource-based
+# add-permission below covers the service-principal path, not the role path).
+ACCOUNT_ID="${AGENTCORE_ROLE_ARN#arn:aws:iam::}"; ACCOUNT_ID="${ACCOUNT_ID%%:*}"
+aws iam put-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-name GatewayInvokeDbopsLambdas \
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"lambda:InvokeFunction\",\"Resource\":[\"arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:dbops-health-tools\",\"arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:dbops-query-tools\"]}]}"
+echo "  ✅ lambda:InvokeFunction granted to $ROLE_NAME (gateway IAM role)"
+# IAM trust/policy changes are eventually consistent; give them a moment to
+# propagate so CreateFunction doesn't fail with "cannot be assumed by Lambda".
+echo "  ⏳ Waiting 10s for IAM propagation..."
+sleep 10
 echo ""
 
 # Deploy Lambda functions
@@ -113,7 +135,11 @@ for FUNC in health query; do
     echo "  Deploying $FUNC_NAME..."
 
     # Create or update
-    if aws lambda get-function --function-name $FUNC_NAME --region $AWS_REGION 2>/dev/null; then
+    if aws lambda get-function --function-name $FUNC_NAME --region $AWS_REGION > /dev/null 2>&1; then
+        # Function exists — it may still be settling from a prior run. Wait until
+        # it's Active before updating, or update-function-code fails with
+        # ResourceConflictException ("currently in the following state: Pending").
+        aws lambda wait function-active --function-name $FUNC_NAME --region $AWS_REGION 2>/dev/null || true
         aws lambda update-function-code \
             --function-name $FUNC_NAME \
             --zip-file fileb://$SCRIPT_DIR/${FUNC}-tools.zip \
@@ -133,13 +159,17 @@ for FUNC in health query; do
             --region $AWS_REGION --output text --query 'FunctionArn' > /dev/null
     fi
 
+    # Wait until the function is fully Active (and any code update applied) before
+    # adding permissions or registering it with the Gateway.
+    aws lambda wait function-active --function-name $FUNC_NAME --region $AWS_REGION 2>/dev/null || true
+
     # Grant Gateway invoke permission
     aws lambda add-permission \
         --function-name $FUNC_NAME \
         --statement-id agentcore-gateway-invoke \
         --action lambda:InvokeFunction \
         --principal bedrock-agentcore.amazonaws.com \
-        --region $AWS_REGION 2>/dev/null || true
+        --region $AWS_REGION > /dev/null 2>&1 || true
 
     echo "  ✅ $FUNC_NAME deployed"
 done

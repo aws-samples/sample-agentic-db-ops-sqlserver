@@ -11,8 +11,14 @@ Usage:
 import json
 import os
 import sys
+import time
+import logging
 
 from bedrock_agentcore_starter_toolkit.operations.gateway.client import GatewayClient
+
+# The toolkit's gateway logger dumps full target payloads at INFO. Quiet it to
+# WARNING so deploy output stays readable (set to INFO/DEBUG to troubleshoot).
+logging.getLogger("bedrock_agentcore.gateway").setLevel(logging.WARNING)
 
 REGION = os.environ["AWS_REGION"]
 ROLE_ARN = os.environ["AGENTCORE_ROLE_ARN"]
@@ -55,46 +61,99 @@ QUERY_TOOLS = [
 ]
 
 
+def _find_gateway_by_name(cp, name):
+    """Return the full gateway dict (from get_gateway) if one exists with this name, else None."""
+    token = None
+    while True:
+        kwargs = {"maxResults": 50}
+        if token:
+            kwargs["nextToken"] = token
+        resp = cp.list_gateways(**kwargs)
+        for gw in resp.get("items", []):
+            if gw.get("name") == name:
+                return cp.get_gateway(gatewayIdentifier=gw["gatewayId"])
+        token = resp.get("nextToken")
+        if not token:
+            return None
+
+
+def _find_target_by_name(cp, gateway_id, name):
+    """Return the target summary dict if a target with this name exists on the gateway, else None."""
+    token = None
+    while True:
+        kwargs = {"gatewayIdentifier": gateway_id, "maxResults": 50}
+        if token:
+            kwargs["nextToken"] = token
+        resp = cp.list_gateway_targets(**kwargs)
+        for t in resp.get("items", []):
+            if t.get("name") == name:
+                return t
+        token = resp.get("nextToken")
+        if not token:
+            return None
+
+
+def _wait_gateway_ready(cp, gateway_id):
+    for _ in range(60):
+        g = cp.get_gateway(gatewayIdentifier=gateway_id)
+        status = g.get("status")
+        if status == "READY":
+            return g
+        if status in ("FAILED", "DELETING"):
+            raise RuntimeError(f"Gateway entered unexpected state: {status} ({g.get('statusReasons')})")
+        time.sleep(5)
+    return cp.get_gateway(gatewayIdentifier=gateway_id)
+
+
 def deploy():
     client = GatewayClient(region_name=REGION)
+    cp = client.client
 
-    # Create MCP Gateway with IAM auth
-    print("  Creating MCP Gateway (IAM auth)...")
-    gateway = client.create_mcp_gateway(
-        name=GATEWAY_NAME,
-        role_arn=ROLE_ARN,
-        authorizer_type="AWS_IAM",
-    )
+    # Create (or reuse) the MCP Gateway with AWS IAM auth.
+    # The toolkit's create_mcp_gateway() hardcodes authorizerType=CUSTOM_JWT (Cognito)
+    # and exposes no way to request IAM auth, so we call the underlying
+    # bedrock-agentcore-control create_gateway API directly with AWS_IAM. The toolkit's
+    # create_mcp_gateway_target() only reads gatewayId + roleArn from the gateway dict,
+    # so the raw boto3 response is compatible for target registration below.
+    existing = _find_gateway_by_name(cp, GATEWAY_NAME)
+    if existing:
+        gateway = existing
+        print(f"  ♻️  Reusing existing gateway: {gateway['gatewayId']}")
+        gateway = _wait_gateway_ready(cp, gateway["gatewayId"])
+    else:
+        print("  Creating MCP Gateway (AWS IAM auth)...")
+        gateway = cp.create_gateway(
+            name=GATEWAY_NAME,
+            roleArn=ROLE_ARN,
+            protocolType="MCP",
+            authorizerType="AWS_IAM",
+            protocolConfiguration={"mcp": {"searchType": "SEMANTIC"}},
+        )
+        gateway = _wait_gateway_ready(cp, gateway["gatewayId"])
     gateway_url = gateway.get("gatewayUrl") or gateway.get("gateway_url")
-    print(f"  ✅ Gateway created: {gateway_url}")
+    print(f"  ✅ Gateway ready: {gateway_url}")
 
-    # Register health tools target
-    health_arn = f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:dbops-health-tools"
-    print("  Registering dbops-health-tools target (14 tools)...")
-    client.create_mcp_gateway_target(
-        gateway=gateway,
-        name="dbops-health-tools",
-        target_type="lambda",
-        target_payload={
-            "lambdaArn": health_arn,
-            "toolSchema": {"inlinePayload": HEALTH_TOOLS},
-        },
-    )
-    print("  ✅ Health tools registered")
-
-    # Register query tools target
-    query_arn = f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:dbops-query-tools"
-    print("  Registering dbops-query-tools target (13 tools)...")
-    client.create_mcp_gateway_target(
-        gateway=gateway,
-        name="dbops-query-tools",
-        target_type="lambda",
-        target_payload={
-            "lambdaArn": query_arn,
-            "toolSchema": {"inlinePayload": QUERY_TOOLS},
-        },
-    )
-    print("  ✅ Query tools registered")
+    # Register targets (skip any that already exist so re-runs are idempotent).
+    targets = [
+        ("dbops-health-tools", "14 tools", HEALTH_TOOLS),
+        ("dbops-query-tools", "13 tools", QUERY_TOOLS),
+    ]
+    for target_name, label, schema in targets:
+        if _find_target_by_name(cp, gateway["gatewayId"], target_name):
+            print(f"  ♻️  Target {target_name} already exists — skipping")
+            continue
+        lambda_arn = f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:{target_name}"
+        print(f"  Registering {target_name} target ({label})...")
+        client.create_mcp_gateway_target(
+            gateway=gateway,
+            name=target_name,
+            target_type="lambda",
+            target_payload={
+                "lambdaArn": lambda_arn,
+                "toolSchema": {"inlinePayload": schema},
+            },
+        )
+        print(f"  ✅ {target_name} registered")
 
     # Save config
     config = {
@@ -108,10 +167,53 @@ def deploy():
 
 
 def cleanup():
+    # The toolkit has no delete_mcp_gateway in this version, so use the boto3
+    # control client directly. A gateway can't be deleted while it has targets,
+    # so delete all targets first, then the gateway. Find the gateway by name.
     client = GatewayClient(region_name=REGION)
+    cp = client.client
+
+    print("  Looking up gateway by name...")
+    gateway_id = None
+    paginator_token = None
+    while True:
+        kwargs = {"maxResults": 50}
+        if paginator_token:
+            kwargs["nextToken"] = paginator_token
+        resp = cp.list_gateways(**kwargs)
+        for gw in resp.get("items", []):
+            if gw.get("name") == GATEWAY_NAME:
+                gateway_id = gw.get("gatewayId")
+                break
+        paginator_token = resp.get("nextToken")
+        if gateway_id or not paginator_token:
+            break
+
+    if not gateway_id:
+        print(f"  ℹ️  No gateway named {GATEWAY_NAME} found — nothing to delete")
+        return
+
+    print(f"  Deleting targets for {gateway_id}...")
+    tk = None
+    while True:
+        kwargs = {"gatewayIdentifier": gateway_id, "maxResults": 50}
+        if tk:
+            kwargs["nextToken"] = tk
+        tresp = cp.list_gateway_targets(**kwargs)
+        for t in tresp.get("items", []):
+            tid = t.get("targetId")
+            try:
+                cp.delete_gateway_target(gatewayIdentifier=gateway_id, targetId=tid)
+                print(f"    ✅ Deleted target {tid}")
+            except Exception as e:
+                print(f"    ⚠️  target {tid}: {e}")
+        tk = tresp.get("nextToken")
+        if not tk:
+            break
+
     print("  Deleting MCP Gateway...")
     try:
-        client.delete_mcp_gateway(name=GATEWAY_NAME)
+        cp.delete_gateway(gatewayIdentifier=gateway_id)
         print("  ✅ Gateway deleted")
     except Exception as e:
         print(f"  ⚠️  {e}")
