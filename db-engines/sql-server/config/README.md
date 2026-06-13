@@ -22,7 +22,7 @@ All configuration lives in `settings.py`. Values are read from environment varia
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BEDROCK_MODEL_ID` | `us.anthropic.claude-sonnet-4-20250514-v1:0` | LLM model for agent reasoning |
+| `BEDROCK_MODEL_ID` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` | LLM model for agent reasoning |
 
 ### AgentCore Memory
 

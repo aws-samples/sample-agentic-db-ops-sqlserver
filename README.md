@@ -155,7 +155,7 @@ Session 2: Supervisor asked "what happened today?"
 
 ```bash
 git clone <your-repo-url>
-cd agentic-db-ops
+cd sample-agentic-db-ops-sqlserver
 
 # Create Python virtual environment
 python3 -m venv .venv
@@ -164,6 +164,18 @@ pip install -r db-engines/sql-server/requirements.txt
 ```
 
 ### 2. Infrastructure setup
+
+> **Set your AWS region first.** Pick one region and use it for everything (CloudFormation,
+> `.env`, and the AgentCore CLI). The deploy scripts read `AWS_REGION` from `.env`, and the
+> infrastructure template's `SetEnvVarsCommand` output sets it for you. Export it now so the
+> CloudFormation commands below target the right region:
+>
+> ```bash
+> export AWS_REGION=us-east-1            # change to your region, e.g. us-west-2
+> export AWS_DEFAULT_REGION=$AWS_REGION  # the agentcore/AWS CLI honor this
+> ```
+>
+> **Important — AgentCore supported AZs:** Bedrock AgentCore Runtime only supports specific Availability Zones. See [AgentCore VPC supported Availability Zones](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html#agentcore-supported-azs).
 
 You have two options depending on whether you already have an RDS SQL Server instance.
 
@@ -175,6 +187,7 @@ This creates a VPC, private subnets, VPC endpoints, RDS SQL Server, SNS topic, a
 aws cloudformation deploy \
   --template-file templates/infrastructure.yaml \
   --stack-name dbops-infra \
+  --region "$AWS_REGION" \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides AlertEmail=your-email@example.com
 ```
@@ -197,6 +210,7 @@ cat > .env << 'EOF'
 export DB_INSTANCE_ID=your-rds-instance-id
 export DB_SECRET_ID=arn:aws:secretsmanager:us-east-1:123456789012:secret:your-secret-name
 export AWS_REGION=us-east-1
+export AWS_DEFAULT_REGION=us-east-1
 export SNS_TOPIC_NAME=your-sns-topic-name
 export SECURITY_GROUP_ID=sg-xxxxxxxxx
 export SUBNET1=subnet-xxxxxxxxx
@@ -234,6 +248,7 @@ If your private subnets don't have a NAT gateway, deploy VPC endpoints:
 aws cloudformation deploy \
   --template-file templates/agentcore-role.yaml \
   --stack-name dbops-agentcore-role \
+  --region "$AWS_REGION" \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
@@ -242,20 +257,22 @@ aws cloudformation deploy \
 If you used **Option A**, generate your `.env` file from both CloudFormation stacks:
 
 ```bash
-eval $(aws cloudformation describe-stacks --stack-name dbops-infra \
-  --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output text | \
-  awk '{print $1"="$2}')
+eval "$(aws cloudformation describe-stacks --stack-name dbops-infra --region "$AWS_REGION" \
+  --query 'Stacks[0].Outputs[?OutputKey==`SetEnvVarsCommand`].OutputValue' \
+  --output text)"
 
-ROLE_ARN=$(aws cloudformation describe-stacks --stack-name dbops-agentcore-role \
+ROLE_ARN=$(aws cloudformation describe-stacks --stack-name dbops-agentcore-role --region "$AWS_REGION" \
   --query 'Stacks[0].Outputs[?OutputKey==`RoleArn`].OutputValue' --output text)
 
 cat > .env << EOF
-export DB_INSTANCE_ID=$DBInstanceId
-export DB_SECRET_ID=$DBSecretId
-export AWS_REGION=us-east-1
-export SNS_TOPIC_NAME=$SNSTopicName
-export SECURITY_GROUP_ID=$SecurityGroupId
-export SUBNET1=$Subnet1
+export DB_INSTANCE_ID=$DB_INSTANCE_ID
+export DB_SECRET_ID=$DB_SECRET_ID
+export AWS_REGION=$AWS_REGION
+export AWS_DEFAULT_REGION=$AWS_REGION
+export SNS_TOPIC_NAME=$SNS_TOPIC_NAME
+export SECURITY_GROUP_ID=$SECURITY_GROUP_ID
+export SUBNET1=$SUBNET1
+export SUBNET2=$SUBNET2
 export AGENTCORE_ROLE_ARN=$ROLE_ARN
 EOF
 ```

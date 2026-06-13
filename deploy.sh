@@ -4,6 +4,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/.env"
 source "$SCRIPT_DIR/.venv/bin/activate"
 
+# ─────────────────────────────────────────────────────────────────
+# Region resolution (single source of truth)
+# Use AWS_REGION from .env; fall back to AWS_DEFAULT_REGION or us-east-1.
+# Export BOTH so the agentcore CLI, AWS CLI, and boto3 all agree — otherwise
+# the CLI can silently fall back to the profile default and deploy to the
+# wrong region (e.g. subnet "not found" because it lives in another region).
+# ─────────────────────────────────────────────────────────────────
+AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+export AWS_REGION
+export AWS_DEFAULT_REGION="$AWS_REGION"
+echo "🌎 Using region: $AWS_REGION"
+echo ""
+
 SQL_SERVER_DIR="$SCRIPT_DIR/db-engines/sql-server"
 
 # Step 0: Create shared memory with semantic + summarization strategies
@@ -55,9 +68,38 @@ if [ -n "$STALE_AGENTS" ]; then
         python3 -c "
 import boto3
 boto3.client('bedrock-agentcore-control', region_name='$AWS_REGION').delete_agent_runtime(agentRuntimeId='$STALE_ID')
-print('  ✅ Deleted')
+print('  ✅ Delete requested')
 " 2>/dev/null
     done
+
+    # delete_agent_runtime is asynchronous: it returns immediately while the runtime
+    # stays in DELETING state for up to a few minutes. Deploying before deletion
+    # completes makes agentcore (with --auto-update-on-conflict) attempt
+    # UpdateAgentRuntime on the dying runtime -> ConflictException ("... while it's
+    # DELETING"). Wait until every stale runtime is fully gone before continuing.
+    echo "  ⏳ Waiting for stale agents to finish deleting..."
+    python3 -c "
+import boto3, time, sys
+client = boto3.client('bedrock-agentcore-control', region_name='$AWS_REGION')
+pending = set('''$STALE_AGENTS'''.split())
+deadline = time.time() + 600
+while pending and time.time() < deadline:
+    existing = {r['agentRuntimeId'] for r in client.list_agent_runtimes(maxResults=50).get('agentRuntimes', [])}
+    gone = {rid for rid in pending if rid not in existing}
+    for rid in sorted(gone):
+        print(f'  ✅ {rid} deleted')
+    pending -= gone
+    if pending:
+        time.sleep(10)
+if pending:
+    print(f'  ❌ Timed out waiting for: {sorted(pending)}', file=sys.stderr)
+    sys.exit(1)
+print('  ✅ All stale agents fully deleted')
+"
+    if [ $? -ne 0 ]; then
+        echo "❌ Stale agents did not finish deleting in time. Re-run deploy shortly."
+        exit 1
+    fi
     echo ""
 else
     echo "  ✅ No stale agents found"
@@ -65,6 +107,8 @@ else
 fi
 
 echo "🏥 [1/5] Database Health Agent..."
+echo "agentcore configure --name database_health_agent -e database_health_agent.py ${COMMON}"
+
 agentcore configure --name database_health_agent -e database_health_agent.py $COMMON
 agentcore deploy --agent database_health_agent --auto-update-on-conflict \
   --env MEMORY_ID=$MEMORY_ID --env DB_INSTANCE_ID=$DB_INSTANCE_ID \

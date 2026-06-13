@@ -9,7 +9,7 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 SNS_TOPIC_NAME = os.getenv('SNS_TOPIC_NAME', 'sqlserver-database-alerts')
 
 # ===== BEDROCK =====
-LLM_MODEL = os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-20250514-v1:0')
+LLM_MODEL = os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')
 
 # ===== AGENTCORE MEMORY =====
 MEMORY_ID = os.getenv('MEMORY_ID', '')

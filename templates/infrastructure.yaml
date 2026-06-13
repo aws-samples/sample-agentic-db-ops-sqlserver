@@ -247,17 +247,16 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName}-agent-sg
+      # Allow all outbound. AgentCore runtimes make outbound connections during
+      # startup (bootstrap, observability/OTEL exporters). Security groups silently
+      # DROP disallowed egress, so a too-narrow rule (e.g. only 443/1433 to the VPC
+      # CIDR) makes those calls hang until the 30s init deadline -> "Runtime
+      # initialization time exceeded" with no logs. The known-good template used
+      # open egress; restoring it here.
       SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 10.32.0.0/16
-          Description: HTTPS to VPC endpoints
-        - IpProtocol: tcp
-          FromPort: 1433
-          ToPort: 1433
-          CidrIp: 10.32.0.0/16
-          Description: SQL Server to RDS
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: All outbound
 
   # VPC Endpoint security group — allows HTTPS from VPC CIDR
   VPCEndpointSecurityGroup:
