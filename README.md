@@ -18,6 +18,14 @@ Deploy to AgentCore in private subnets with least-privilege IAM. Enable GenAI Ob
 | [💾 Data Lifecycle](db-engines/sql-server#data-lifecycle-tools-25) | 25 | SQL Server DMVs, CloudWatch, RDS API | Table sizes, backups, TempDB, storage trends | ✅ Ready |
 | [🎯 Supervisor](db-engines/sql-server#supervisor-tools-10) | 10 | A2A orchestration | Routes queries, correlates findings, daily reports | ✅ Ready |
 
+> **Two ways to use it.** Invoke these agents directly on AgentCore Runtime
+> (`agentcore invoke`), or use the managed [AWS DevOps Agent](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent.html)
+> web app for zero-code investigations. The DevOps Agent reaches the same health
+> and query capabilities through an AgentCore Gateway (the `dbops-health-tools`
+> and `dbops-query-tools` MCP targets) and adds its own native CloudWatch and
+> Performance Insights access. See [deployment/devops-agent](deployment/devops-agent/README.md)
+> for setup.
+
 ## Architecture
 
 ```mermaid
