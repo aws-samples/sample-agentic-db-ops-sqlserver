@@ -19,7 +19,7 @@ Autonomous DBOps is a multi-agent system that converts SQL Server diagnostic exp
                                     │                        VPC (Private Subnets)                    │
                                     │                                                                 │
 ┌──────────────┐                    │  ┌───────────────────────────────────────────────────────────┐  │
-│              │  invoke.sh /       │  │              Amazon Bedrock AgentCore Runtime              │  │
+│              │  agentcore /       │  │              Amazon Bedrock AgentCore Runtime              │  │
 │  DBA /       │  boto3 API        │  │                                                           │  │
 │  Operator    │───────────────────►│  │  ┌─────────────────────────────────────────────────────┐  │  │
 │              │                    │  │  │              🎯 Supervisor Agent                     │  │  │

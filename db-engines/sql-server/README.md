@@ -57,8 +57,8 @@ From the repo root:
 ### 4. Test
 
 ```bash
-./invoke.sh database_health_agent "What is the current CPU utilization?"
-./invoke.sh supervisor_agent "Give me a complete database health report"
+agentcore invoke --agent database_health_agent '{"prompt": "What is the current CPU utilization?"}'
+agentcore invoke --agent supervisor_agent '{"prompt": "Give me a complete database health report"}'
 ```
 
 ## Tool Reference

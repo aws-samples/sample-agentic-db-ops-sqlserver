@@ -1,8 +1,8 @@
 #!/bin/bash
 # deploy_gateway.sh - Deploy SQL Server diagnostic tools as MCP endpoints via AgentCore Gateway
 #
-# Creates 2 Lambda functions (health + query tools), a Cognito OAuth authorizer,
-# and an AgentCore Gateway with all tools registered. Outputs gateway_config.json.
+# Creates 2 Lambda functions (health + query tools) and an AgentCore Gateway with
+# AWS IAM (SigV4) auth and all tools registered. Outputs gateway_config.json.
 #
 # Prerequisites:
 #   - .env sourced (SUBNET1, SECURITY_GROUP_ID, AGENTCORE_ROLE_ARN, DB_SECRET_ID, DB_INSTANCE_ID, AWS_REGION, SNS_TOPIC_NAME)
@@ -175,7 +175,7 @@ for FUNC in health query; do
 done
 echo ""
 
-# Create Gateway (Cognito + Gateway + targets)
+# Create Gateway (Gateway + targets, AWS IAM auth)
 echo "┌──────────────────────────────────────────────────────────────┐"
 echo "│  🌐 Creating AgentCore Gateway                                │"
 echo "└──────────────────────────────────────────────────────────────┘"

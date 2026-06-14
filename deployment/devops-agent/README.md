@@ -1,6 +1,6 @@
 # AWS DevOps Agent Integration
 
-Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent.html) for managed, zero-code investigations through a web interface.
+Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent.html) for managed, zero-code investigations through a web interface. This is an alternative to invoking the agents directly on AgentCore Runtime (`agentcore invoke`) — the same health and query capabilities, surfaced in a managed web app instead of the CLI.
 
 ## How It Works
 
@@ -85,7 +85,7 @@ The skill teaches DevOps Agent a structured troubleshooting methodology: triage 
 
 1. Zip the skill:
    ```bash
-   cd skills && zip -r sql-server-investigation.zip sql-server-investigation/ && cd ..
+   cd skills && zip -r ../sql-server-investigation.zip sql-server-investigation/ && cd ..
    ```
 2. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
 3. Click **sql-server-dbops** → **Operator access** → **Skills** → **Add skill** → **Upload skill**
@@ -121,24 +121,31 @@ Tool names in DevOps Agent use the format: `<target>___<tool>` (triple underscor
 
 ## Cleanup
 
+Tear down in this order. (For the authoritative, fully-detailed teardown — including
+every variable lookup — see the **Cleanup** section of [SETUP.md](SETUP.md).)
+
 ```bash
-# Remove MCP server association
-aws devops-agent disassociate-service \
-  --agent-space-id $AGENT_SPACE_ID \
-  --service-id $MCP_SERVICE_ID \
-  --region $AWS_REGION
+# 1. Disassociate the MCP service (disassociate takes the ASSOCIATION id, not the service id)
+ASSOCIATION_ID=$(aws devops-agent list-associations --agent-space-id $AGENT_SPACE_ID --region $AWS_REGION \
+  --query "associations[?serviceId=='$MCP_SERVICE_ID'].associationId | [0]" --output text)
+aws devops-agent disassociate-service --agent-space-id $AGENT_SPACE_ID --association-id $ASSOCIATION_ID --region $AWS_REGION
 
-# Delete Agent Space
-aws devops-agent delete-agent-space \
-  --agent-space-id $AGENT_SPACE_ID \
-  --region $AWS_REGION
+# 2. Deregister the MCP service, then delete the Agent Space
+aws devops-agent deregister-service --service-id $MCP_SERVICE_ID --region $AWS_REGION
+aws devops-agent delete-agent-space --agent-space-id $AGENT_SPACE_ID --region $AWS_REGION
 
-# Delete IAM roles
+# 3. Delete the Agent Space IAM roles
 aws iam detach-role-policy --role-name DevOpsAgentRole-AgentSpace --policy-arn arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy
 aws iam delete-role --role-name DevOpsAgentRole-AgentSpace
 aws iam detach-role-policy --role-name DevOpsAgentRole-WebappAdmin --policy-arn arn:aws:iam::aws:policy/AIDevOpsOperatorAppAccessPolicy
 aws iam delete-role --role-name DevOpsAgentRole-WebappAdmin
 
-# Delete Gateway (run from this directory)
+# 4. Delete the Gateway, Lambdas, and pymssql layer (run from this directory)
 ./deploy_gateway.sh --cleanup
+
+# 5. (Optional) Remove the gateway-specific grants added to the SHARED execution role.
+#    Do NOT delete AgentCoreDBOpsRole itself — the 5 AgentCore agents use it.
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name InvokeDbopsGateway 2>/dev/null || true
+aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name GatewayInvokeDbopsLambdas 2>/dev/null || true
 ```

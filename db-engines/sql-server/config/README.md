@@ -15,7 +15,7 @@ All configuration lives in `settings.py`. Values are read from environment varia
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AWS_REGION` | `us-west-2` | AWS region |
+| `AWS_REGION` | `us-east-1` | AWS region |
 | `SNS_TOPIC_NAME` | `sqlserver-database-alerts` | SNS topic for alert notifications |
 
 ### Bedrock
