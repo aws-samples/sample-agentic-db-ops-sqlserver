@@ -112,6 +112,13 @@ The agent follows the skill methodology — triaging health, identifying bottlen
 
 Tool names in DevOps Agent use the format: `<target>___<tool>` (triple underscore).
 
+> **Note:** `dbops-health-tools` overlaps with metrics the DevOps Agent can read
+> natively (CloudWatch, Performance Insights / Database Insights). The
+> `sql-server-investigation` skill deliberately prefers the agent's native API
+> access for triage and uses these health tools only as a fallback, reserving the
+> MCP/Lambda path for the SQL-level detail in `dbops-query-tools`. See the skill's
+> "Data Source Boundaries" section for the rationale.
+
 ## Cleanup
 
 ```bash
