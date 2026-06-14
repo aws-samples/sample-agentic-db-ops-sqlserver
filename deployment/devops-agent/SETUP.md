@@ -303,6 +303,42 @@ aws devops-agent enable-operator-app \
 
 ## Step 12 — Register Gateway as MCP Server
 
+The gateway uses AWS IAM (SigV4) inbound auth. Registration only succeeds after
+the signing role (`$AGENTCORE_ROLE_ARN`) can both be assumed by the DevOps Agent
+service *and* invoke the gateway. Do 12a and 12b first, then register in 12c.
+
+### 12a — Let the DevOps Agent service assume the signing role
+
+Adds `aidevops.amazonaws.com` to the role's trust policy while preserving the
+existing `bedrock-agentcore` and `lambda` trust:
+
+```bash
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+
+aws iam update-assume-role-policy \
+  --role-name "$ROLE_NAME" \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":[\"bedrock-agentcore.amazonaws.com\",\"lambda.amazonaws.com\"]},\"Action\":\"sts:AssumeRole\"},{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"aidevops.amazonaws.com\"},\"Action\":[\"sts:AssumeRole\",\"sts:TagSession\"],\"Condition\":{\"StringEquals\":{\"aws:SourceAccount\":\"${AWS_ACCOUNTID}\"}}}]}"
+```
+
+### 12b — Allow the signing role to invoke the gateway
+
+```bash
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+
+GATEWAY_ID=$(aws bedrock-agentcore-control list-gateways --region $AWS_REGION \
+  --query "items[?name=='dbops-mcp-gateway'].gatewayId | [0]" --output text)
+
+aws iam put-role-policy \
+  --role-name "$ROLE_NAME" \
+  --policy-name InvokeDbopsGateway \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowGatewayInvocation\",\"Effect\":\"Allow\",\"Action\":[\"bedrock-agentcore:InvokeGateway\"],\"Resource\":[\"arn:aws:bedrock-agentcore:${AWS_REGION}:${AWS_ACCOUNTID}:gateway/${GATEWAY_ID}\"]}]}"
+```
+
+### 12c — Register the gateway
+
+IAM changes take a few seconds to propagate, so wait ~10s after 12a/12b before
+running this:
+
 ```bash
 GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
 
@@ -316,24 +352,14 @@ export MCP_SERVICE_ID=$(aws devops-agent register-service \
 echo "MCP Service ID: $MCP_SERVICE_ID"
 ```
 
----
+A non-empty `MCP Service ID` means it worked.
 
-## Step 12b — Grant the SigV4 Role Permission to Invoke the Gateway
-
-The gateway uses AWS IAM (SigV4) inbound auth, so the role used for signing
-(`$AGENTCORE_ROLE_ARN`) must be allowed to invoke the gateway. Without this, the
-next step fails with `403 Authorization error - Insufficient permissions`.
-
-```bash
-GATEWAY_ID=$(aws bedrock-agentcore-control list-gateways --region $AWS_REGION \
-  --query "items[?name=='dbops-mcp-gateway'].gatewayId | [0]" --output text)
-
-ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
-aws iam put-role-policy \
-  --role-name "$ROLE_NAME" \
-  --policy-name InvokeDbopsGateway \
-  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowGatewayInvocation\",\"Effect\":\"Allow\",\"Action\":[\"bedrock-agentcore:InvokeGateway\"],\"Resource\":[\"arn:aws:bedrock-agentcore:${AWS_REGION}:${AWS_ACCOUNTID}:gateway/${GATEWAY_ID}\"]}]}"
-```
+> **Troubleshooting**
+> - `ValidationException: Invalid STS role configuration ... Verify the role's trust policy`
+>   → 12a didn't apply. Re-run it and confirm with
+>   `aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument'`.
+> - `403 Authorization error - Insufficient permissions` → 12b hasn't propagated
+>   yet. Wait ~20s and re-run 12c; the grant is correct, IAM is just catching up.
 
 ---
 

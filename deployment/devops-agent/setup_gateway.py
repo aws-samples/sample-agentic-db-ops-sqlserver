@@ -1,5 +1,5 @@
 """
-setup_gateway.py - Create Cognito OAuth, AgentCore Gateway, and register Lambda targets.
+setup_gateway.py - Create the AgentCore Gateway (AWS IAM auth) and register Lambda targets.
 
 Called by deploy_gateway.sh. Outputs gateway_config.json with connection details.
 
@@ -93,6 +93,30 @@ def _find_target_by_name(cp, gateway_id, name):
             return None
 
 
+def _wait_lambda_active(region, function_name, timeout=180):
+    """Block until a Lambda reports State=Active.
+
+    VPC functions stay in 'Pending' for 30-60s+ after creation while ENIs
+    provision, and CreateGatewayTarget rejects a not-yet-Active function with
+    'is not ready or has a resource conflict'. Poll until it's ready.
+    """
+    import boto3
+    lam = boto3.client("lambda", region_name=region)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        cfg = lam.get_function_configuration(FunctionName=function_name)
+        state = cfg.get("State")
+        if state == "Active":
+            return
+        if state == "Failed":
+            raise RuntimeError(
+                f"Lambda {function_name} is in Failed state: {cfg.get('StateReason')}"
+            )
+        print(f"    ⏳ {function_name} is {state}, waiting...")
+        time.sleep(5)
+    raise RuntimeError(f"Lambda {function_name} did not become Active within {timeout}s")
+
+
 def _wait_gateway_ready(cp, gateway_id):
     for _ in range(60):
         g = cp.get_gateway(gatewayIdentifier=gateway_id)
@@ -143,6 +167,7 @@ def deploy():
             print(f"  ♻️  Target {target_name} already exists — skipping")
             continue
         lambda_arn = f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:{target_name}"
+        _wait_lambda_active(REGION, target_name)
         print(f"  Registering {target_name} target ({label})...")
         client.create_mcp_gateway_target(
             gateway=gateway,
@@ -204,19 +229,35 @@ def cleanup():
             tid = t.get("targetId")
             try:
                 cp.delete_gateway_target(gatewayIdentifier=gateway_id, targetId=tid)
-                print(f"    ✅ Deleted target {tid}")
+                print(f"    ✅ Delete requested for target {tid}")
             except Exception as e:
                 print(f"    ⚠️  target {tid}: {e}")
         tk = tresp.get("nextToken")
         if not tk:
             break
 
+    # Target deletion is asynchronous. delete_gateway fails with "has targets
+    # associated with it" until every target is fully gone, so wait it out.
+    print("  ⏳ Waiting for targets to finish deleting...")
+    deadline = time.time() + 300
+    while time.time() < deadline:
+        remaining = cp.list_gateway_targets(gatewayIdentifier=gateway_id, maxResults=50).get("items", [])
+        if not remaining:
+            break
+        time.sleep(5)
+
     print("  Deleting MCP Gateway...")
-    try:
-        cp.delete_gateway(gatewayIdentifier=gateway_id)
-        print("  ✅ Gateway deleted")
-    except Exception as e:
-        print(f"  ⚠️  {e}")
+    # Retry briefly in case the targets-gone state is still settling.
+    last_err = None
+    for _ in range(12):
+        try:
+            cp.delete_gateway(gatewayIdentifier=gateway_id)
+            print("  ✅ Gateway deleted")
+            return
+        except Exception as e:
+            last_err = e
+            time.sleep(5)
+    print(f"  ⚠️  {last_err}")
 
 
 if __name__ == "__main__":
