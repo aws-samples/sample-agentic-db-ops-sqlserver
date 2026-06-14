@@ -46,7 +46,10 @@ aws iam create-policy \
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
         "iam:DeleteRole",
-        "iam:PassRole"
+        "iam:PassRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:UpdateAssumeRolePolicy"
       ],
       "Resource": "*"
     },
@@ -54,13 +57,14 @@ aws iam create-policy \
       "Sid": "AgentCoreGateway",
       "Effect": "Allow",
       "Action": [
-        "bedrock-agentcore:CreateMcpGateway",
-        "bedrock-agentcore:CreateMcpGatewayTarget",
-        "bedrock-agentcore:DeleteMcpGateway",
-        "bedrock-agentcore:DeleteMcpGatewayTarget",
-        "bedrock-agentcore:GetMcpGateway",
-        "bedrock-agentcore:ListMcpGateways",
-        "bedrock-agentcore:ListMcpGatewayTargets"
+        "bedrock-agentcore:CreateGateway",
+        "bedrock-agentcore:CreateGatewayTarget",
+        "bedrock-agentcore:DeleteGateway",
+        "bedrock-agentcore:DeleteGatewayTarget",
+        "bedrock-agentcore:GetGateway",
+        "bedrock-agentcore:ListGateways",
+        "bedrock-agentcore:ListGatewayTargets",
+        "bedrock-agentcore:InvokeGateway"
       ],
       "Resource": "*"
     },
@@ -71,7 +75,6 @@ aws iam create-policy \
         "devops-agent:CreateAgentSpace",
         "devops-agent:DeleteAgentSpace",
         "devops-agent:GetAgentSpace",
-        "devops-agent:AssociateAccount",
         "devops-agent:EnableOperatorApp",
         "devops-agent:RegisterService",
         "devops-agent:DeregisterService",
@@ -383,7 +386,10 @@ Are there any blocking sessions affecting performance?
 ## Cleanup
 
 ```bash
-aws devops-agent disassociate-service --agent-space-id $AGENT_SPACE_ID --service-id $MCP_SERVICE_ID --region $AWS_REGION
+# Find the association ID for the MCP service, then disassociate it
+ASSOCIATION_ID=$(aws devops-agent list-associations --agent-space-id $AGENT_SPACE_ID --region $AWS_REGION \
+  --query "associations[?serviceId=='$MCP_SERVICE_ID'].associationId | [0]" --output text)
+aws devops-agent disassociate-service --agent-space-id $AGENT_SPACE_ID --association-id $ASSOCIATION_ID --region $AWS_REGION
 aws devops-agent deregister-service --service-id $MCP_SERVICE_ID --region $AWS_REGION
 aws devops-agent delete-agent-space --agent-space-id $AGENT_SPACE_ID --region $AWS_REGION
 
