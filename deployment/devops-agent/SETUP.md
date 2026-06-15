@@ -135,6 +135,7 @@ export DB_SECRET_ID=arn:aws:secretsmanager:us-west-2:123456789012:secret:your-se
 export SNS_TOPIC_NAME=your-sns-topic-name
 export SECURITY_GROUP_ID=sg-xxxxxxxxx
 export SUBNET1=subnet-xxxxxxxxx
+export SUBNET2=subnet-yyyyyyyyy   # second subnet for Lambda VPC config; set to $SUBNET1 if you only have one
 export AGENTCORE_ROLE_ARN=arn:aws:iam::123456789012:role/AgentCoreDBOpsRole
 
 python3 -m pip install bedrock-agentcore-starter-toolkit mcp strands-agents strands-agents-tools -q
@@ -185,8 +186,6 @@ cd deployment/devops-agent/lambda/query && zip -r /tmp/query-tools.zip . -q && c
 > **Optional** — skip this step if you are omitting the health tools (see Step 2).
 
 ```bash
-export SUBNET2="${SUBNET2:-$SUBNET1}"
-
 aws lambda create-function \
   --function-name dbops-health-tools \
   --runtime python3.12 \
