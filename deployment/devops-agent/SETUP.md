@@ -141,16 +141,25 @@ echo "Layer ARN: $LAYER_ARN"
 
 ## Step 2 — Package Lambda Functions
 
+> **Health tools are optional.** The investigation skill (Step 14) has the DevOps
+> Agent read health signals — CPU utilization, memory, connections, load, and so on
+> — through its own native CloudWatch and Performance Insights APIs rather than the
+> health MCP tools. Package and deploy `dbops-health-tools` for a fully functional
+> gateway, or omit every `dbops-health-tools` step (the marked lines in Steps 2, 3,
+> 5, 6, and 13) if you only need the SQL-level `dbops-query-tools`.
+
 From the repo root:
 
 ```bash
-cd deployment/devops-agent/lambda/health && zip -r /tmp/health-tools.zip . -q && cd -
+cd deployment/devops-agent/lambda/health && zip -r /tmp/health-tools.zip . -q && cd -   # optional (health tools)
 cd deployment/devops-agent/lambda/query && zip -r /tmp/query-tools.zip . -q && cd -
 ```
 
 ---
 
 ## Step 3 — Create Health Tools Lambda
+
+> **Optional** — skip this step if you are omitting the health tools (see Step 2).
 
 ```bash
 export SUBNET2="${SUBNET2:-$SUBNET1}"
@@ -194,6 +203,8 @@ aws lambda create-function \
 
 ## Step 5 — Grant Gateway Invoke Permissions
 
+Skip the first command if you are omitting the health tools (see Step 2).
+
 ```bash
 aws lambda add-permission \
   --function-name dbops-health-tools \
@@ -215,6 +226,9 @@ aws lambda add-permission \
 ## Step 6 — Create MCP Gateway
 
 This creates an IAM-authenticated MCP Gateway and registers both Lambda targets with tool schemas. Uses the AgentCore SDK (no CLI equivalent exists for Gateway operations).
+
+> **Omitting the health tools?** Run `setup_gateway.py --query-only` instead — it
+> registers only the `dbops-query-tools` target and skips `dbops-health-tools`.
 
 ```bash
 python3 deployment/devops-agent/setup_gateway.py
@@ -369,11 +383,24 @@ A non-empty `MCP Service ID` means it worked.
 > service was registered as `mcpserversigv4` (Step 12), the configuration uses the
 > `mcpserversigv4` key (not `mcpserver`).
 
+The command below allowlists all 27 tools (14 health + 13 query). If you omitted
+the health tools (see Step 2), use the query-only variant that follows instead.
+
 ```bash
 aws devops-agent associate-service \
   --agent-space-id $AGENT_SPACE_ID \
   --service-id $MCP_SERVICE_ID \
   --configuration '{"mcpserversigv4": {"tools": ["dbops-health-tools___get_applications", "dbops-health-tools___get_cpu_utilization", "dbops-health-tools___get_database_connections", "dbops-health-tools___get_database_load", "dbops-health-tools___get_extended_database_load", "dbops-health-tools___get_free_storage", "dbops-health-tools___get_freeable_memory", "dbops-health-tools___get_iops", "dbops-health-tools___get_network_throughput", "dbops-health-tools___get_read_write_latency", "dbops-health-tools___get_top_sql", "dbops-health-tools___get_users", "dbops-health-tools___get_wait_events", "dbops-health-tools___send_email_notification", "dbops-query-tools___check_query_store_enabled", "dbops-query-tools___get_blocking_sessions", "dbops-query-tools___get_expensive_queries_from_cache", "dbops-query-tools___get_index_usage", "dbops-query-tools___get_query_execution_history", "dbops-query-tools___get_query_plan_from_cache", "dbops-query-tools___get_query_store_plan_summary", "dbops-query-tools___get_query_store_regressed_queries", "dbops-query-tools___get_query_store_top_queries", "dbops-query-tools___get_query_store_wait_stats", "dbops-query-tools___get_slow_queries", "dbops-query-tools___send_email_notification", "dbops-query-tools___suggest_indexes"]}}' \
+  --region $AWS_REGION
+```
+
+Query-only variant (health tools omitted):
+
+```bash
+aws devops-agent associate-service \
+  --agent-space-id $AGENT_SPACE_ID \
+  --service-id $MCP_SERVICE_ID \
+  --configuration '{"mcpserversigv4": {"tools": ["dbops-query-tools___check_query_store_enabled", "dbops-query-tools___get_blocking_sessions", "dbops-query-tools___get_expensive_queries_from_cache", "dbops-query-tools___get_index_usage", "dbops-query-tools___get_query_execution_history", "dbops-query-tools___get_query_plan_from_cache", "dbops-query-tools___get_query_store_plan_summary", "dbops-query-tools___get_query_store_regressed_queries", "dbops-query-tools___get_query_store_top_queries", "dbops-query-tools___get_query_store_wait_stats", "dbops-query-tools___get_slow_queries", "dbops-query-tools___send_email_notification", "dbops-query-tools___suggest_indexes"]}}' \
   --region $AWS_REGION
 ```
 

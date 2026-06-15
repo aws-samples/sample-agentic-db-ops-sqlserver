@@ -10,14 +10,23 @@
 #   - pymssql Lambda layer available (pymssql-layer-3.12.zip)
 #
 # Usage:
-#   ./deploy_gateway.sh           # Deploy
-#   ./deploy_gateway.sh --cleanup # Remove everything
+#   ./deploy_gateway.sh              # Deploy (health + query tools)
+#   ./deploy_gateway.sh --query-only # Deploy query tools only (skip health Lambda)
+#   ./deploy_gateway.sh --cleanup    # Remove everything
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR/../.."
 
 source "$ROOT_DIR/.env"
+
+# Health tools are optional. With --query-only we skip the dbops-health-tools
+# Lambda entirely (the investigation skill reads health signals via the agent's
+# own native CloudWatch/PI access), deploying just dbops-query-tools.
+QUERY_ONLY=false
+if [ "$1" == "--query-only" ]; then
+    QUERY_ONLY=true
+fi
 
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  🌐 AgentCore Gateway — MCP Endpoint Deployment             ║"
@@ -82,12 +91,14 @@ echo "└───────────────────────�
 # so we zip them directly (matches SETUP.md).
 LAMBDA_DIR="$SCRIPT_DIR/lambda"
 
-# Health tools Lambda
-cd "$LAMBDA_DIR/health" && zip -r "$SCRIPT_DIR/health-tools.zip" . -q && cd "$SCRIPT_DIR"
+# Health tools Lambda (skipped with --query-only)
+if [ "$QUERY_ONLY" = false ]; then
+    cd "$LAMBDA_DIR/health" && zip -r "$SCRIPT_DIR/health-tools.zip" . -q && cd "$SCRIPT_DIR"
+    echo "  ✅ health-tools.zip"
+fi
 
 # Query tools Lambda
 cd "$LAMBDA_DIR/query" && zip -r "$SCRIPT_DIR/query-tools.zip" . -q && cd "$SCRIPT_DIR"
-echo "  ✅ health-tools.zip"
 echo "  ✅ query-tools.zip"
 echo ""
 
@@ -113,10 +124,15 @@ echo "  ✅ AWSLambdaVPCAccessExecutionRole attached"
 # identity-based lambda:InvokeFunction grant on the role (the resource-based
 # add-permission below covers the service-principal path, not the role path).
 ACCOUNT_ID="${AGENTCORE_ROLE_ARN#arn:aws:iam::}"; ACCOUNT_ID="${ACCOUNT_ID%%:*}"
+if [ "$QUERY_ONLY" = false ]; then
+    INVOKE_RESOURCES="\"arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:dbops-health-tools\",\"arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:dbops-query-tools\""
+else
+    INVOKE_RESOURCES="\"arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:dbops-query-tools\""
+fi
 aws iam put-role-policy \
     --role-name "$ROLE_NAME" \
     --policy-name GatewayInvokeDbopsLambdas \
-    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"lambda:InvokeFunction\",\"Resource\":[\"arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:dbops-health-tools\",\"arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:dbops-query-tools\"]}]}"
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"lambda:InvokeFunction\",\"Resource\":[${INVOKE_RESOURCES}]}]}"
 echo "  ✅ lambda:InvokeFunction granted to $ROLE_NAME (gateway IAM role)"
 # IAM trust/policy changes are eventually consistent; give them a moment to
 # propagate so CreateFunction doesn't fail with "cannot be assumed by Lambda".
@@ -130,7 +146,13 @@ echo "│  🚀 Deploying Lambda functions                                │"
 echo "└──────────────────────────────────────────────────────────────┘"
 SUBNET2="${SUBNET2:-$SUBNET1}"
 
-for FUNC in health query; do
+if [ "$QUERY_ONLY" = false ]; then
+    FUNCS="health query"
+else
+    FUNCS="query"
+fi
+
+for FUNC in $FUNCS; do
     FUNC_NAME="dbops-${FUNC}-tools"
     echo "  Deploying $FUNC_NAME..."
 
@@ -179,7 +201,11 @@ echo ""
 echo "┌──────────────────────────────────────────────────────────────┐"
 echo "│  🌐 Creating AgentCore Gateway                                │"
 echo "└──────────────────────────────────────────────────────────────┘"
-python3 "$SCRIPT_DIR/setup_gateway.py"
+if [ "$QUERY_ONLY" = true ]; then
+    python3 "$SCRIPT_DIR/setup_gateway.py" --query-only
+else
+    python3 "$SCRIPT_DIR/setup_gateway.py"
+fi
 echo ""
 
 # Cleanup build artifacts
@@ -189,10 +215,21 @@ echo "╔═══════════════════════�
 echo "║  🎉 AgentCore Gateway deployment complete!                    ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  🎉 AgentCore Gateway deployment complete!                    ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
 echo "║  🌐 Gateway URL: $GATEWAY_URL"
-echo "║  🔧 Total tools: 27                                          ║"
-echo "║                                                              ║"
-echo "║  Lambda Functions:                                           ║"
-echo "║    📊 dbops-health-tools     (14 tools)                      ║"
-echo "║    ⚡ dbops-query-tools      (13 tools)                      ║"
+if [ "$QUERY_ONLY" = true ]; then
+    echo "║  🔧 Total tools: 13                                          ║"
+    echo "║                                                              ║"
+    echo "║  Lambda Functions:                                           ║"
+    echo "║    ⚡ dbops-query-tools      (13 tools)                      ║"
+else
+    echo "║  🔧 Total tools: 27                                          ║"
+    echo "║                                                              ║"
+    echo "║  Lambda Functions:                                           ║"
+    echo "║    📊 dbops-health-tools     (14 tools)                      ║"
+    echo "║    ⚡ dbops-query-tools      (13 tools)                      ║"
+fi
 echo "╚══════════════════════════════════════════════════════════════╝"

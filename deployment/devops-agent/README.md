@@ -39,6 +39,13 @@ chmod +x deploy_gateway.sh
 
 This creates `gateway_config.json` with the Gateway URL.
 
+> **Note — health tools are optional.** The gateway deploys both the
+> `dbops-health-tools` and `dbops-query-tools` Lambda targets. The health tools are
+> optional: the investigation skill (Step 4) has the DevOps Agent read health
+> signals — CPU utilization, memory, connections, load, and so on — through its
+> own native CloudWatch and Performance Insights APIs rather than these MCP tools.
+> To deploy the SQL-level query tools only, run `./deploy_gateway.sh --query-only`.
+
 > **Prefer to run each step by hand?** `deploy_gateway.sh` automates the gateway
 > setup. For the full manual, step-by-step walkthrough of what it does (IAM policy,
 > publishing the pymssql layer, packaging and creating each Lambda, creating the

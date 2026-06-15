@@ -4,8 +4,9 @@ setup_gateway.py - Create the AgentCore Gateway (AWS IAM auth) and register Lamb
 Called by deploy_gateway.sh. Outputs gateway_config.json with connection details.
 
 Usage:
-    python3 setup_gateway.py            # Create
-    python3 setup_gateway.py --cleanup  # Delete
+    python3 setup_gateway.py               # Create (health + query targets)
+    python3 setup_gateway.py --query-only  # Create query-tools target only
+    python3 setup_gateway.py --cleanup     # Delete
 """
 
 import json
@@ -129,7 +130,7 @@ def _wait_gateway_ready(cp, gateway_id):
     return cp.get_gateway(gatewayIdentifier=gateway_id)
 
 
-def deploy():
+def deploy(query_only=False):
     client = GatewayClient(region_name=REGION)
     cp = client.client
 
@@ -158,10 +159,15 @@ def deploy():
     print(f"  ✅ Gateway ready: {gateway_url}")
 
     # Register targets (skip any that already exist so re-runs are idempotent).
+    # Health tools are optional — --query-only registers just dbops-query-tools
+    # (the skill reads health signals via the agent's native CloudWatch/PI access).
     targets = [
         ("dbops-health-tools", "14 tools", HEALTH_TOOLS),
         ("dbops-query-tools", "13 tools", QUERY_TOOLS),
     ]
+    if query_only:
+        targets = [t for t in targets if t[0] == "dbops-query-tools"]
+        print("  ℹ️  --query-only: registering dbops-query-tools target only")
     for target_name, label, schema in targets:
         if _find_target_by_name(cp, gateway["gatewayId"], target_name):
             print(f"  ♻️  Target {target_name} already exists — skipping")
@@ -184,7 +190,7 @@ def deploy():
     config = {
         "gateway_url": gateway_url,
         "region": REGION,
-        "total_tools": 27,
+        "total_tools": 13 if query_only else 27,
     }
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
@@ -268,4 +274,4 @@ if __name__ == "__main__":
             import boto3
             ACCOUNT_ID = boto3.client("sts").get_caller_identity()["Account"]
             os.environ["AWS_ACCOUNTID"] = ACCOUNT_ID
-        deploy()
+        deploy(query_only="--query-only" in sys.argv)
