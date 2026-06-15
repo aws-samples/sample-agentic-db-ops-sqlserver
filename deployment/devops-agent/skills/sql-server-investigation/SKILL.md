@@ -130,18 +130,6 @@ Structure the response as:
 Prefer native AWS APIs for everything they expose; reserve the MCP tools for
 SQL-level detail those APIs cannot reach.
 
-> **Note — native AWS calls vs. the MCP health tools.** This project also ships a
-> standalone `database_health_agent` (an AgentCore runtime) whose CloudWatch and
-> Performance Insights logic is exposed to the DevOps Agent through the
-> `dbops-health-tools` MCP target (e.g. `get_cpu_utilization`, `get_database_load`,
-> `get_wait_events`). This skill deliberately uses the DevOps Agent's *own* native
-> CloudWatch and PI API access for triage and bottleneck routing (Steps 1, 2,
-> 3c–3e, 4) rather than those MCP tools. The native path needs no SQL connection,
-> returns faster, and keeps the MCP/Lambda round-trip reserved for the SQL-level
-> signal it alone can provide (blocking chains, Query Store, plan cache, index
-> usage). Treat the health MCP tools as a fallback for when native CloudWatch/PI
-> access is unavailable.
-
 Available natively through AWS APIs (prefer these):
 
 - CloudWatch metrics — CPU, memory, storage, IOPS, latency, connections.
