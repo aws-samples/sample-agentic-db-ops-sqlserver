@@ -94,13 +94,36 @@ aws iam create-policy \
 }'
 ```
 
-Attach it to your operator role:
+Attach it to your operator role.
+
+**Not sure what your operator role is?** It's the IAM identity you're running these
+commands as. Check it:
+
+```bash
+aws sts get-caller-identity --query Arn --output text
+```
+
+- `arn:aws:iam::<acct>:user/<name>` → you're an **IAM user**. Use `attach-user-policy`
+  with `--user-name <name>` instead of the role command below.
+- `arn:aws:sts::<acct>:assumed-role/<ROLE_NAME>/<session>` → you're an **assumed role**.
+  Your operator role is `<ROLE_NAME>` (the middle segment). Extract it with:
+
+  ```bash
+  export OPERATOR_ROLE=$(aws sts get-caller-identity --query Arn --output text | cut -d/ -f2)
+  echo "Operator role: $OPERATOR_ROLE"
+  ```
+
+Then attach the policy:
 
 ```bash
 aws iam attach-role-policy \
-  --role-name <YOUR_OPERATOR_ROLE> \
-  --policy-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):policy/DevOpsAgentSetupPolicy
+  --role-name "$OPERATOR_ROLE" \
+  --policy-arn arn:aws:iam::${AWS_ACCOUNTID:-$(aws sts get-caller-identity --query Account --output text)}:policy/DevOpsAgentSetupPolicy
 ```
+
+> If you already have broad permissions (e.g. an admin role), you can skip attaching
+> this policy — it only exists to grant a least-privilege operator exactly what the
+> runbook needs.
 
 ### Environment
 
@@ -459,6 +482,6 @@ aws lambda delete-function --function-name dbops-query-tools --region $AWS_REGIO
 LAYER_VERSION=$(aws lambda list-layer-versions --layer-name pymssql-layer --region $AWS_REGION --query 'LayerVersions[0].Version' --output text)
 aws lambda delete-layer-version --layer-name pymssql-layer --version-number $LAYER_VERSION --region $AWS_REGION
 
-aws iam detach-role-policy --role-name <YOUR_OPERATOR_ROLE> --policy-arn arn:aws:iam::${AWS_ACCOUNTID}:policy/DevOpsAgentSetupPolicy
+aws iam detach-role-policy --role-name "$OPERATOR_ROLE" --policy-arn arn:aws:iam::${AWS_ACCOUNTID}:policy/DevOpsAgentSetupPolicy
 aws iam delete-policy --policy-arn arn:aws:iam::${AWS_ACCOUNTID}:policy/DevOpsAgentSetupPolicy
 ```
