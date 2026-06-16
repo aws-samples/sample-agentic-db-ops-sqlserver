@@ -46,6 +46,20 @@
       }
     },
     {
+      "Sid": "KMSDecryptForSecretsManager",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "secretsmanager.*.amazonaws.com"
+        }
+      }
+    },
+    {
       "Sid": "CloudWatchMetrics",
       "Effect": "Allow",
       "Action": [
