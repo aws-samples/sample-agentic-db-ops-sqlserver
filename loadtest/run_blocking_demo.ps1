@@ -10,10 +10,15 @@
   Run from the Windows bastion host. Requires the loadtest database and dbo.Orders
   table (run setup first — see below).
 
+  Prerequisites — set these environment variables:
+    $env:RDS_ENDPOINT   = "<your-rds-endpoint>"
+    $env:DB_USER        = "<sql-login>"
+    $env:DB_PASSWORD    = "<sql-password>"
+
   Setup (run once):
-    Invoke-Sqlcmd -ServerInstance $server -Username admin -Password TestPassword123 `
+    Invoke-Sqlcmd -ServerInstance $env:RDS_ENDPOINT -Username $env:DB_USER -Password $env:DB_PASSWORD `
       -Database master -TrustServerCertificate -Query "IF DB_ID('loadtest') IS NULL CREATE DATABASE loadtest;"
-    Invoke-Sqlcmd -ServerInstance $server -Username admin -Password TestPassword123 `
+    Invoke-Sqlcmd -ServerInstance $env:RDS_ENDPOINT -Username $env:DB_USER -Password $env:DB_PASSWORD `
       -Database loadtest -TrustServerCertificate -Query @"
         IF OBJECT_ID('dbo.Orders','U') IS NULL
         BEGIN
@@ -21,9 +26,6 @@
             INSERT INTO dbo.Orders (OrderID, Status, Amount) SELECT TOP 1000 ROW_NUMBER() OVER (ORDER BY a.object_id), 'OPEN', CAST(RAND(CHECKSUM(NEWID())) * 1000 AS DECIMAL(10,2)) FROM sys.all_objects a CROSS JOIN sys.all_objects b;
         END
 "@
-
-.PARAMETER Server
-  RDS endpoint (default: dbops-infra-sqlserver.clgxkunm6m6u.us-west-2.rds.amazonaws.com)
 
 .PARAMETER DurationSeconds
   How long to hold the incident (default 600 = 10 minutes).
@@ -33,15 +35,20 @@
   .\run_blocking_demo.ps1 -DurationSeconds 300
 #>
 param(
-    [string]$Server = "dbops-infra-sqlserver.clgxkunm6m6u.us-west-2.rds.amazonaws.com",
-    [string]$User = "admin",
-    [string]$Password = "TestPassword123",
     [int]$DurationSeconds = 600
 )
 
 $ErrorActionPreference = "Stop"
 
-$connStr = "Server=$Server;Database=loadtest;User Id=$User;Password=$Password;TrustServerCertificate=True;Connect Timeout=30"
+foreach ($v in "RDS_ENDPOINT", "DB_USER", "DB_PASSWORD") {
+    if (-not (Test-Path "Env:$v")) { throw "Set environment variable $v" }
+}
+
+$server   = $env:RDS_ENDPOINT
+$user     = $env:DB_USER
+$password = $env:DB_PASSWORD
+
+$connStr = "Server=$server;Database=loadtest;User Id=$user;Password=$password;TrustServerCertificate=True;Connect Timeout=30"
 
 $holdSeconds = $DurationSeconds + 60
 $hms = '{0:00}:{1:00}:{2:00}' -f [int]($holdSeconds/3600), [int](($holdSeconds%3600)/60), [int]($holdSeconds%60)
