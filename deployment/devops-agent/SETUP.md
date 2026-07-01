@@ -470,9 +470,8 @@ The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook
 ### 16a — Generate the Webhook URL and Secret
 
 1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
-2. Click **sql-server-dbops** → **View Details**
-3. Navigate to the **Capabilities** tab
-4. Scroll down to the **Webhooks** section and click **Add**
+2. Click **sql-server-dbops** → **Capabilities** tab
+3. Scroll down to the **Webhooks** section and click **Add**
 5. The system generates an HMAC key pair — copy the **Webhook URL** and the **Secret Key** immediately
 
 ### 16b — Store Webhook Credentials in Secrets Manager
