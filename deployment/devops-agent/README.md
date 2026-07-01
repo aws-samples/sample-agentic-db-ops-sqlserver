@@ -106,6 +106,18 @@ The skill teaches DevOps Agent a structured troubleshooting methodology: triage 
 3. Click **sql-server-dbops** → **Operator access** → **Skills** → **Add skill** → **Upload skill**
 4. Select `sql-server-investigation.zip`, set Agent Type to **Generic**, click **Upload**
 
+### Add Agent Instructions (recommended)
+
+When multiple skills are uploaded, a generic prompt like "high CPU" can be ambiguous.
+[Agent Instructions](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-agent-instructions.html)
+tell the agent which skill to use for which scenario.
+
+1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
+2. Click **sql-server-dbops** → **Operator access** → **Agent instructions**
+3. Paste the contents of [`AGENTS.md`](AGENTS.md) (Agent Type **Investigation / INCIDENT_RCA**) and save
+
+See [SETUP.md Step 15](SETUP.md#step-15--add-agent-instructions-recommended) for details.
+
 ## Step 5: Connect CloudWatch Alarms (event-driven investigations)
 
 Wire CloudWatch Alarms to DevOps Agent so that threshold breaches automatically
