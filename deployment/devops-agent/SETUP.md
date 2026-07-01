@@ -536,6 +536,12 @@ aws lambda add-permission \
 
 ### 16f — Create Alarms with the Lambda as an Action
 
+Create three CloudWatch alarms on the RDS instance that invoke the webhook
+executor Lambda when they breach. Each alarm monitors a different symptom:
+**HighCPU** (average CPU > 80%), **HighConnections** (active connections > 10),
+and **HighReadLatency** (read latency > 20 ms). Thresholds are intentionally
+low for demo purposes — adjust them for production workloads.
+
 ```bash
 export WEBHOOK_LAMBDA_ARN=$(aws lambda get-function \
   --function-name dbops-webhook-executor --region $AWS_REGION \
