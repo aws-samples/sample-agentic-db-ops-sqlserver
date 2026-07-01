@@ -471,7 +471,7 @@ The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook
 
 1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
 2. Click **sql-server-dbops** → **Capabilities** tab
-3. Under **Webhooks**, find **Agent Space Webhook** and click **Add** (this is the webhook that triggers investigations — not "Capability Webhooks" which is for outbound calls)
+3. Under **Webhooks**, find **Agent Space Webhook** and click **Add** 
 4. The system generates an HMAC key pair — copy the **Webhook URL** and the **Secret Key** immediately
 
 ### 16b — Store Webhook Credentials in Secrets Manager
