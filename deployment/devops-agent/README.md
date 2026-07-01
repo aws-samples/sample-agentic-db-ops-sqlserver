@@ -5,19 +5,27 @@ Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.
 ## How It Works
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│  DevOps Agent   │────▶│ AgentCore Gateway │────▶│  Lambda Functions   │
-│  (Web App)      │     │  (MCP endpoint)   │     │  (your tools)       │
-└─────────────────┘     └──────────────────┘     └─────────────────────┘
-        │                        │                         │
-   Skills guide          IAM auth + routing         CloudWatch, DMVs,
-   methodology            (SigV4)                  Database Insights
+┌──────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
+│  DevOps Agent    │────▶│ AgentCore Gateway │────▶│  Lambda Functions   │
+│  (Web App)       │     │  (MCP endpoint)   │     │  (your tools)       │
+└──────────────────┘     └──────────────────┘     └─────────────────────┘
+        ▲                        │                         │
+        │                 IAM auth + routing         CloudWatch, DMVs,
+        │                  (SigV4)                  Database Insights
+        │
+        │  Webhook POST (HMAC-SHA256)
+        │
+┌──────────────────┐     ┌──────────────────┐
+│  Webhook Lambda  │◀────│ CloudWatch Alarm  │◀─── RDS metric threshold
+│  (bridge)        │     │  (direct invoke)  │
+└──────────────────┘     └──────────────────┘
 ```
 
 1. Your existing tools (health + query) are packaged as Lambda functions
 2. AgentCore Gateway exposes them as MCP endpoints with AWS IAM (SigV4) authentication
 3. DevOps Agent connects to the Gateway and discovers all 27 tools
 4. An investigation skill teaches the agent your structured troubleshooting methodology
+5. CloudWatch Alarms invoke a webhook executor Lambda that triggers investigations automatically
 
 ## Prerequisites
 
@@ -98,15 +106,34 @@ The skill teaches DevOps Agent a structured troubleshooting methodology: triage 
 3. Click **sql-server-dbops** → **Operator access** → **Skills** → **Add skill** → **Upload skill**
 4. Select `sql-server-investigation.zip`, set Agent Type to **Generic**, click **Upload**
 
+## Step 5: Connect CloudWatch Alarms (event-driven investigations)
+
+Wire CloudWatch Alarms to DevOps Agent so that threshold breaches automatically
+start investigations — no human in the loop.
+
+The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook**
+
+1. Register a webhook in the DevOps Agent console (Settings → Integrations → Webhook)
+2. Store the webhook URL and secret in Secrets Manager
+3. Deploy the webhook executor Lambda (`lambda/webhook/lambda_function.py`)
+4. Create CloudWatch alarms with the Lambda ARN as the alarm action
+
+The full step-by-step commands are in [SETUP.md](SETUP.md) — see **Step 16**.
+
 ## Use It
 
-Open the DevOps Agent Web App and start an investigation:
+**Manual** — Open the DevOps Agent Web App and start an investigation:
 
 ```
 "Give me a complete database health report"
 "The database is experiencing high CPU. Diagnose the root cause."
 "Are there any blocking sessions affecting performance?"
 ```
+
+**Alarm-triggered** — When a CloudWatch alarm fires (e.g. CPU > 80%), the webhook
+executor Lambda automatically triggers a DevOps Agent investigation. The agent uses
+the investigation skill, reads CloudWatch/Database Insights via its IAM role, and
+calls your MCP tools through the Gateway for SQL-level detail.
 
 The agent follows the skill methodology — triaging health, identifying bottleneck type via wait events, drilling into the specific issue, and producing severity-rated recommendations.
 
@@ -132,27 +159,33 @@ Tear down in this order. (For the authoritative, fully-detailed teardown — inc
 every variable lookup — see the **Cleanup** section of [SETUP.md](SETUP.md).)
 
 ```bash
-# 1. Disassociate the MCP service (disassociate takes the ASSOCIATION id, not the service id)
+# 1. Webhook executor and alarms (Step 5)
+aws lambda delete-function --function-name dbops-webhook-executor --region $AWS_REGION
+aws secretsmanager delete-secret --secret-id dbops-devops-agent-webhook --force-delete-without-recovery --region $AWS_REGION
+aws cloudwatch delete-alarms --alarm-names "dbops-demo-HighCPU" "dbops-demo-HighConnections" "dbops-demo-HighReadLatency" --region $AWS_REGION
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name WebhookSecretRead 2>/dev/null || true
+
+# 2. Disassociate the MCP service (disassociate takes the ASSOCIATION id, not the service id)
 ASSOCIATION_ID=$(aws devops-agent list-associations --agent-space-id $AGENT_SPACE_ID --region $AWS_REGION \
   --query "associations[?serviceId=='$MCP_SERVICE_ID'].associationId | [0]" --output text)
 aws devops-agent disassociate-service --agent-space-id $AGENT_SPACE_ID --association-id $ASSOCIATION_ID --region $AWS_REGION
 
-# 2. Deregister the MCP service, then delete the Agent Space
+# 3. Deregister the MCP service, then delete the Agent Space
 aws devops-agent deregister-service --service-id $MCP_SERVICE_ID --region $AWS_REGION
 aws devops-agent delete-agent-space --agent-space-id $AGENT_SPACE_ID --region $AWS_REGION
 
-# 3. Delete the Agent Space IAM roles
+# 4. Delete the Agent Space IAM roles
 aws iam detach-role-policy --role-name DevOpsAgentRole-AgentSpace --policy-arn arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy
 aws iam delete-role --role-name DevOpsAgentRole-AgentSpace
 aws iam detach-role-policy --role-name DevOpsAgentRole-WebappAdmin --policy-arn arn:aws:iam::aws:policy/AIDevOpsOperatorAppAccessPolicy
 aws iam delete-role --role-name DevOpsAgentRole-WebappAdmin
 
-# 4. Delete the Gateway, Lambdas, and pymssql layer (run from this directory)
+# 5. Delete the Gateway, Lambdas, and pymssql layer (run from this directory)
 ./deploy_gateway.sh --cleanup
 
-# 5. (Optional) Remove the gateway-specific grants added to the SHARED execution role.
+# 6. (Optional) Remove the gateway-specific grants added to the SHARED execution role.
 #    Do NOT delete AgentCoreDBOpsRole itself — the 5 AgentCore agents use it.
-ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
 aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name InvokeDbopsGateway 2>/dev/null || true
 aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name GatewayInvokeDbopsLambdas 2>/dev/null || true
 ```

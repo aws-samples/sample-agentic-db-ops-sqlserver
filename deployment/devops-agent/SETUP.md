@@ -440,7 +440,163 @@ cd deployment/devops-agent/skills && zip -r ../sql-server-investigation.zip sql-
 
 ---
 
-## Step 15 — Start an Investigation
+## Step 15 — Add Agent Instructions (recommended)
+
+Skills are *auto-selected* by matching your prompt against each skill's description.
+When multiple skills are uploaded (for example the AWS-published `rds-operation-review`
+skill alongside `sql-server-investigation`), a generic prompt like "high CPU" can be
+ambiguous and the agent may not pick the SQL-Server skill. [Agent Instructions](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-agent-instructions.html)
+are always-applied directives that remove that ambiguity — they tell the agent which
+skill to use for which scenario, so you don't have to name the skill in every prompt.
+
+Add the `AGENTS.md` from this directory in the console:
+
+1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
+2. Click **sql-server-dbops** → **Operator access** → **Agent instructions**
+3. Paste the contents of [`AGENTS.md`](AGENTS.md) (Agent Type **Investigation / INCIDENT_RCA**) and save
+
+With this in place, any SQL Server / RDS SQL Server investigation automatically uses
+the `sql-server-investigation` skill — no need to name it in the prompt.
+
+---
+
+## Step 16 — Connect CloudWatch Alarms (event-driven investigations)
+
+This step wires CloudWatch Alarms to DevOps Agent so that an alarm firing
+automatically starts an investigation — no human in the loop.
+
+The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook**
+
+### 16a — Register a Webhook in DevOps Agent
+
+1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
+2. Click **sql-server-dbops** → **Settings** → **Integrations** → **Webhook**
+3. Click **Create Webhook** — copy the **Webhook URL** and **Webhook Secret**
+
+### 16b — Store Webhook Credentials in Secrets Manager
+
+```bash
+export WEBHOOK_URL="<paste webhook URL>"
+export WEBHOOK_SECRET="<paste webhook secret>"
+
+export WEBHOOK_SECRET_ARN=$(aws secretsmanager create-secret \
+  --name dbops-devops-agent-webhook \
+  --description "DevOps Agent webhook credentials for alarm-triggered investigations" \
+  --secret-string "{\"webhookUrl\":\"$WEBHOOK_URL\",\"webhookSecret\":\"$WEBHOOK_SECRET\"}" \
+  --region $AWS_REGION \
+  --query 'ARN' --output text)
+
+echo "Webhook Secret ARN: $WEBHOOK_SECRET_ARN"
+```
+
+### 16c — Package and Deploy the Webhook Executor Lambda
+
+```bash
+cd deployment/devops-agent/lambda/webhook && zip -r /tmp/webhook-executor.zip . -q && cd -
+
+aws lambda create-function \
+  --function-name dbops-webhook-executor \
+  --runtime python3.12 \
+  --handler lambda_function.lambda_handler \
+  --role $AGENTCORE_ROLE_ARN \
+  --zip-file fileb:///tmp/webhook-executor.zip \
+  --timeout 30 \
+  --memory-size 128 \
+  --environment "Variables={WEBHOOK_SECRET_ARN=$WEBHOOK_SECRET_ARN}" \
+  --region $AWS_REGION \
+  --query 'FunctionArn' --output text
+```
+
+> This Lambda does NOT need VPC access — it calls the public DevOps Agent
+> webhook endpoint and Secrets Manager over the internet.
+
+### 16d — Grant the Lambda Role Access to the Webhook Secret
+
+```bash
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+
+aws iam put-role-policy \
+  --role-name "$ROLE_NAME" \
+  --policy-name WebhookSecretRead \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"secretsmanager:GetSecretValue\",\"Resource\":\"$WEBHOOK_SECRET_ARN\"}]}"
+```
+
+### 16e — Allow CloudWatch Alarms to Invoke the Lambda
+
+```bash
+aws lambda add-permission \
+  --function-name dbops-webhook-executor \
+  --statement-id cloudwatch-alarm-invoke \
+  --action lambda:InvokeFunction \
+  --principal lambda.alarms.cloudwatch.amazonaws.com \
+  --source-account $AWS_ACCOUNTID \
+  --region $AWS_REGION
+```
+
+### 16f — Create Alarms with the Lambda as an Action
+
+```bash
+export WEBHOOK_LAMBDA_ARN=$(aws lambda get-function \
+  --function-name dbops-webhook-executor --region $AWS_REGION \
+  --query 'Configuration.FunctionArn' --output text)
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name "dbops-demo-HighCPU" \
+  --alarm-description "RDS CPU utilization high — triggers DevOps Agent investigation" \
+  --namespace AWS/RDS --metric-name CPUUtilization \
+  --dimensions Name=DBInstanceIdentifier,Value=$DB_INSTANCE_ID \
+  --statistic Average --period 60 --evaluation-periods 1 \
+  --threshold 80 --comparison-operator GreaterThanThreshold \
+  --treat-missing-data notBreaching \
+  --alarm-actions $WEBHOOK_LAMBDA_ARN \
+  --region $AWS_REGION
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name "dbops-demo-HighConnections" \
+  --alarm-description "RDS database connections high — triggers DevOps Agent investigation" \
+  --namespace AWS/RDS --metric-name DatabaseConnections \
+  --dimensions Name=DBInstanceIdentifier,Value=$DB_INSTANCE_ID \
+  --statistic Average --period 60 --evaluation-periods 1 \
+  --threshold 10 --comparison-operator GreaterThanThreshold \
+  --treat-missing-data notBreaching \
+  --alarm-actions $WEBHOOK_LAMBDA_ARN \
+  --region $AWS_REGION
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name "dbops-demo-HighReadLatency" \
+  --alarm-description "RDS read latency high — triggers DevOps Agent investigation" \
+  --namespace AWS/RDS --metric-name ReadLatency \
+  --dimensions Name=DBInstanceIdentifier,Value=$DB_INSTANCE_ID \
+  --statistic Average --period 60 --evaluation-periods 1 \
+  --threshold 0.02 --comparison-operator GreaterThanThreshold \
+  --treat-missing-data notBreaching \
+  --alarm-actions $WEBHOOK_LAMBDA_ARN \
+  --region $AWS_REGION
+```
+
+> **Thresholds are intentionally low** so they trip quickly during the demo.
+> Adjust for production workloads.
+
+### 16g — Test the Integration
+
+Invoke the alarm manually to verify end-to-end:
+
+```bash
+aws cloudwatch set-alarm-state \
+  --alarm-name "dbops-demo-HighCPU" \
+  --state-value ALARM \
+  --state-reason "Manual test of alarm-to-investigation flow" \
+  --region $AWS_REGION
+```
+
+Within seconds, check the DevOps Agent Web App — a new investigation should
+appear, triggered by the alarm. The agent will use the `sql-server-investigation`
+skill, read CloudWatch/Database Insights via its IAM role, and call your MCP
+tools through the Gateway when deeper SQL-level data is needed.
+
+---
+
+## Step 17 — Start an Investigation (manual)
 
 Open the DevOps Agent Web App and try:
 
@@ -459,6 +615,15 @@ Are there any blocking sessions affecting performance?
 ---
 
 ## Cleanup
+
+```bash
+# Webhook executor
+aws lambda delete-function --function-name dbops-webhook-executor --region $AWS_REGION
+aws secretsmanager delete-secret --secret-id dbops-devops-agent-webhook --force-delete-without-recovery --region $AWS_REGION
+aws cloudwatch delete-alarms --alarm-names "dbops-demo-HighCPU" "dbops-demo-HighConnections" "dbops-demo-HighReadLatency" --region $AWS_REGION
+ROLE_NAME="${AGENTCORE_ROLE_ARN##*/}"
+aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name WebhookSecretRead
+```
 
 ```bash
 # Find the association ID for the MCP service, then disassociate it
