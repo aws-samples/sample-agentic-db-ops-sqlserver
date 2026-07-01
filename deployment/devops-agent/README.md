@@ -125,7 +125,7 @@ start investigations — no human in the loop.
 
 The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook**
 
-1. Generate a webhook in the DevOps Agent console (Agent Space → View Details → Capabilities → Webhooks → Add)
+1. Generate a webhook in the DevOps Agent console (click sql-server-dbops → View Details → Capabilities → Webhooks → Add)
 2. Store the webhook URL and secret in Secrets Manager
 3. Deploy the webhook executor Lambda (`lambda/webhook/lambda_function.py`)
 4. Create CloudWatch alarms with the Lambda ARN as the alarm action
