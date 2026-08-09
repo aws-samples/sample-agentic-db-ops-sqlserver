@@ -126,7 +126,7 @@ HTML_TEMPLATE = """
             <div class="params">
                 <div class="param-group">
                     <label>Workers</label>
-                    <input type="number" id="workers" value="6" min="1" max="20">
+                    <input type="number" id="workers" value="8" min="1" max="20">
                 </div>
                 <div class="param-group">
                     <label>Sleep Min (s)</label>
@@ -397,7 +397,7 @@ def start():
 
     params = request.json or {}
     procedures = params.get('procedures', ['sp_MonthlyOrderReport'])
-    workers = params.get('workers', 6)
+    workers = params.get('workers', 8)
     sleep_min = params.get('sleep_min', 2)
     sleep_max = params.get('sleep_max', 5)
     duration = params.get('duration', 4320)

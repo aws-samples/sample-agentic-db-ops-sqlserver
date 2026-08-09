@@ -111,9 +111,9 @@ PYEOF
 chmod +x /tmp/sp_workload.py
 export DB_HOST DB_USER DB_PASS DB_PORT END_TIME
 
-# Start 40 concurrent workload processes
-for i in {1..40}; do
+# Start 8 concurrent workload processes
+for i in {1..8}; do
   python3 /tmp/sp_workload.py &
 done
 
-echo "DBOpsLab workload started with 6 concurrent processes"
+echo "DBOpsLab workload started with 8 concurrent processes"
