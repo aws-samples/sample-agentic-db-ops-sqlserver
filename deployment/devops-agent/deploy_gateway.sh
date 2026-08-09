@@ -22,8 +22,21 @@ if [ -f "$ROOT_DIR/.env" ]; then
     source "$ROOT_DIR/.env"
 fi
 
+# Find Python 3.10+ (required by bedrock-agentcore-starter-toolkit)
+PYTHON=""
+for p in python3.12 python3.11 python3.10 python3; do
+    if command -v $p &>/dev/null && $p -c "import sys; assert sys.version_info >= (3,10)" 2>/dev/null; then
+        PYTHON=$p
+        break
+    fi
+done
+if [ -z "$PYTHON" ]; then
+    echo "❌ Python 3.10+ required but not found"
+    exit 1
+fi
+
 # Ensure required Python packages are installed
-pip3 install bedrock-agentcore-starter-toolkit pymssql boto3 -q 2>/dev/null || true
+$PYTHON -m pip install bedrock-agentcore-starter-toolkit pymssql boto3 -q 2>/dev/null || true 2>/dev/null || true
 
 # Health tools are optional. With --query-only we skip the dbops-health-tools
 # Lambda entirely (the investigation skill reads health signals via the agent's
@@ -41,7 +54,7 @@ echo ""
 # Cleanup mode
 if [ "$1" == "--cleanup" ]; then
     echo "🧹 Cleaning up Gateway resources..."
-    python3 "$SCRIPT_DIR/setup_gateway.py" --cleanup
+    $PYTHON "$SCRIPT_DIR/setup_gateway.py" --cleanup
     echo "  Deleting Lambda functions..."
     aws lambda delete-function --function-name dbops-health-tools --region $AWS_REGION 2>/dev/null || true
     aws lambda delete-function --function-name dbops-query-tools --region $AWS_REGION 2>/dev/null || true
@@ -215,9 +228,9 @@ echo "┌───────────────────────�
 echo "│  🌐 Creating AgentCore Gateway                                │"
 echo "└──────────────────────────────────────────────────────────────┘"
 if [ "$QUERY_ONLY" = true ]; then
-    python3 "$SCRIPT_DIR/setup_gateway.py" --query-only
+    $PYTHON "$SCRIPT_DIR/setup_gateway.py" --query-only
 else
-    python3 "$SCRIPT_DIR/setup_gateway.py"
+    $PYTHON "$SCRIPT_DIR/setup_gateway.py"
 fi
 echo ""
 
@@ -227,11 +240,11 @@ rm -f "$SCRIPT_DIR/health-tools.zip" "$SCRIPT_DIR/query-tools.zip"
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  🎉 AgentCore Gateway deployment complete!                    ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
-GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
+GATEWAY_URL=$($PYTHON -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  🎉 AgentCore Gateway deployment complete!                    ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
-GATEWAY_URL=$(python3 -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
+GATEWAY_URL=$($PYTHON -c "import json; print(json.load(open('gateway_config.json'))['gateway_url'])")
 echo "║  🌐 Gateway URL: $GATEWAY_URL"
 if [ "$QUERY_ONLY" = true ]; then
     echo "║  🔧 Total tools: 13                                          ║"
