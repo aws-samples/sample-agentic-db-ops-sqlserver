@@ -22,6 +22,9 @@ if [ -f "$ROOT_DIR/.env" ]; then
     source "$ROOT_DIR/.env"
 fi
 
+# Ensure required Python packages are installed
+pip3 install bedrock-agentcore-starter-toolkit pymssql boto3 -q 2>/dev/null || true
+
 # Health tools are optional. With --query-only we skip the dbops-health-tools
 # Lambda entirely (the investigation skill reads health signals via the agent's
 # own native CloudWatch/PI access), deploying just dbops-query-tools.
