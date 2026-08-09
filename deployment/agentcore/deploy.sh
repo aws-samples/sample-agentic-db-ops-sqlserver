@@ -4,8 +4,8 @@ set -e
 # db-engines/, scripts/, .bedrock_agentcore.yaml) are two levels up, via ROOT_DIR.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-source "$ROOT_DIR/.env"
-source "$ROOT_DIR/.venv/bin/activate"
+source "$ROOT_DIR/.env" 2>/dev/null || true
+source "$ROOT_DIR/.venv/bin/activate" 2>/dev/null || true
 
 # ─────────────────────────────────────────────────────────────────
 # Region resolution (single source of truth)

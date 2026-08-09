@@ -18,7 +18,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR/../.."
 
-source "$ROOT_DIR/.env"
+if [ -f "$ROOT_DIR/.env" ]; then
+    source "$ROOT_DIR/.env"
+fi
 
 # Health tools are optional. With --query-only we skip the dbops-health-tools
 # Lambda entirely (the investigation skill reads health signals via the agent's

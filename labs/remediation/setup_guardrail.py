@@ -131,9 +131,13 @@ def create_guardrail():
         with open(bashrc_path, 'a') as f:
             f.write(f'\n{source_line}\n')
 
-    print(f"  ✅ Done.")
-    print(f"  BEDROCK_GUARDRAIL_ID={guardrail_id}")
-    print(f"  BEDROCK_GUARDRAIL_VERSION={version}")
+    print()
+    print(f"  ╔══════════════════════════════════════════════════╗")
+    print(f"  ║  ✅ Bedrock Guardrail Ready                      ║")
+    print(f"  ╠══════════════════════════════════════════════════╣")
+    print(f"  ║  GUARDRAIL_ID:      {guardrail_id:<27}║")
+    print(f"  ║  GUARDRAIL_VERSION: {version:<27}║")
+    print(f"  ╚══════════════════════════════════════════════════╝")
     print(f"\n  Run: source ~/.dbops_env")
 
     return guardrail_id, version

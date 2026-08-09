@@ -479,13 +479,14 @@ def main():
             f.write(f'\n{source_line}\n')
 
     print()
-    print("=" * 60)
-    print("✅ SETUP COMPLETE")
-    print("=" * 60)
-    print(f"  APPROVAL_API_URL={api_url}")
-    print(f"  APPROVAL_TABLE_NAME={table_name}")
-    print(f"  SES_SENDER_EMAIL={email}")
-    print(f"  SES_RECIPIENT_EMAIL={email}")
+    print("  ╔══════════════════════════════════════════════════╗")
+    print("  ║  ✅ Approval Workflow Ready                       ║")
+    print("  ╠══════════════════════════════════════════════════╣")
+    print(f"  ║  APPROVAL_API_URL:    {api_url[:25]+'...' if len(api_url)>25 else api_url:<28}║")
+    print(f"  ║  APPROVAL_TABLE:      {table_name:<28}║")
+    print(f"  ║  SES_SENDER_EMAIL:    {email:<28}║")
+    print(f"  ║  SES_RECIPIENT_EMAIL: {email:<28}║")
+    print("  ╚══════════════════════════════════════════════════╝")
     print(f"\n  Run: source ~/.dbops_env")
 
 
