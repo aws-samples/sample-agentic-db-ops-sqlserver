@@ -67,16 +67,24 @@ echo ""
 echo "┌──────────────────────────────────────────────────────────────┐"
 echo "│  📦 Publishing pymssql Lambda layer                           │"
 echo "└──────────────────────────────────────────────────────────────┘"
-if [ ! -f "$SCRIPT_DIR/pymssql-layer-3.12.zip" ]; then
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LAYER_ZIP=""
+if [ -f "$SCRIPT_DIR/pymssql-layer-3.12.zip" ]; then
+    LAYER_ZIP="$SCRIPT_DIR/pymssql-layer-3.12.zip"
+elif [ -f "$REPO_ROOT/labs/layers/pymssql-layer-3.12.zip" ]; then
+    LAYER_ZIP="$REPO_ROOT/labs/layers/pymssql-layer-3.12.zip"
+fi
+if [ -z "$LAYER_ZIP" ]; then
     echo "  ⚠️  pymssql-layer-3.12.zip not found. Building..."
     pip install pymssql -t /tmp/pymssql-layer/python --platform manylinux2014_x86_64 --only-binary=:all: --python-version 3.12 -q
     cd /tmp/pymssql-layer && zip -r "$SCRIPT_DIR/pymssql-layer-3.12.zip" python -q && cd "$SCRIPT_DIR"
     rm -rf /tmp/pymssql-layer
+    LAYER_ZIP="$SCRIPT_DIR/pymssql-layer-3.12.zip"
 fi
 LAYER_ARN=$(aws lambda publish-layer-version \
     --layer-name pymssql-layer \
     --compatible-runtimes python3.12 \
-    --zip-file fileb://$SCRIPT_DIR/pymssql-layer-3.12.zip \
+    --zip-file fileb://$LAYER_ZIP \
     --region $AWS_REGION \
     --query 'LayerVersionArn' --output text)
 echo "  ✅ Layer: $LAYER_ARN"

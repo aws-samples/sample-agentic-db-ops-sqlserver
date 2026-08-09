@@ -33,3 +33,4 @@ _test_stage/
 *.swp
 *.swo
 *.zip
+!labs/layers/*.zip
