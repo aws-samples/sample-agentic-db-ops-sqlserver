@@ -3,6 +3,7 @@ import subprocess
 import os
 import json
 import time
+import re
 
 app = Flask(__name__)
 
@@ -374,19 +375,34 @@ def status():
     result = subprocess.run(['pgrep', '-f', 'sp_workload'], capture_output=True, text=True)
     pids = [p for p in result.stdout.strip().split('\n') if p]
     running = len(pids) > 0
+    workers = len(pids)
     stored_procedures = get_stored_procedures()
-    state = load_state()
-    procedures = state.get('procedures', [])
-    if running and not procedures:
-        procedures = ['sp_MonthlyOrderReport']
-        save_state({'procedures': procedures, 'workers': len(pids)})
+
+    # Detect actual running SPs from /tmp/sp_workload.py (truth source)
+    procedures = []
+    try:
+        with open('/tmp/sp_workload.py', 'r') as f:
+            script_content = f.read()
+        match = re.search(r"stored_procedures\s*=\s*\[([^\]]+)\]", script_content)
+        if match:
+            items = match.group(1)
+            procedures = [s.strip().strip("'").strip('"') for s in items.split(',')
+                         if s.strip() and not s.strip().startswith('#')]
+    except:
+        pass
+
+    # Fall back to state file if script not readable
+    if not procedures:
+        state = load_state()
+        procedures = state.get('procedures', ['sp_MonthlyOrderReport'])
+
     sp_status = []
     for sp in stored_procedures:
         if sp['name'] in procedures and running:
             sp_status.append({'name': sp['name'], 'status': 'running'})
         else:
             sp_status.append({'name': sp['name'], 'status': 'stopped'})
-    return jsonify({'running': running, 'workers': len(pids), 'procedures': sp_status})
+    return jsonify({'running': running, 'workers': workers, 'procedures': sp_status})
 
 
 @app.route('/app/api/start', methods=['POST'])
