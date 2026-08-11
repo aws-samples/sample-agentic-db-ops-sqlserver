@@ -72,11 +72,14 @@ conn = pymssql.connect(server=host, user=user, password=password, port=port, dat
 cursor = conn.cursor()
 
 stored_procedures = [
-    'sp_CustomerOrderSummary',
-    'sp_ProductSalesReport',
-    'sp_OrderAnalysisByYear',
-    'sp_CustomerPurchaseHistory',
-    'sp_ProductInventoryMatrix',
+    # Other SPs have code-level anti-patterns (scalar UDFs, CROSS JOINs, nested subqueries)
+    # that require stored procedure rewrites — not fixable with indexes alone.
+    # Uncomment to include them in the workload for broader CPU pressure:
+    # 'sp_CustomerOrderSummary',
+    # 'sp_ProductSalesReport',
+    # 'sp_OrderAnalysisByYear',
+    # 'sp_CustomerPurchaseHistory',
+    # 'sp_ProductInventoryMatrix',
     'sp_MonthlyOrderReport'
 ]
 
