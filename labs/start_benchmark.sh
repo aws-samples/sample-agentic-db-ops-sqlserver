@@ -110,8 +110,8 @@ conn.close()
 print("Workload completed!")
 PYEOF
 
-# Make script executable and run multiple concurrent workload processes
-chmod +x /tmp/sp_workload.py
+# Make script executable and accessible by any user (UI runs as participant, boot runs as root)
+chmod 666 /tmp/sp_workload.py
 export DB_HOST DB_USER DB_PASS DB_PORT END_TIME
 
 # Start 8 concurrent workload processes

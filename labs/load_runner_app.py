@@ -418,6 +418,15 @@ def start():
     sleep_max = params.get('sleep_max', 5)
     duration = params.get('duration', 4320)
 
+    # Remove existing workload script if owned by root (boot creates it as root)
+    try:
+        os.remove(WORKLOAD_SCRIPT)
+    except (PermissionError, FileNotFoundError):
+        try:
+            subprocess.run(['sudo', 'rm', '-f', WORKLOAD_SCRIPT], capture_output=True)
+        except Exception:
+            pass
+
     with open(WORKLOAD_SCRIPT, 'w') as f:
         f.write(WORKLOAD_TEMPLATE)
 
