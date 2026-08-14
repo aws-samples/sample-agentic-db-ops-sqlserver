@@ -11,6 +11,10 @@ from typing import Dict, Any, List
 DB_INSTANCE_ID = os.getenv('DB_INSTANCE_ID', 'dbops-infra-sqlserver')
 DB_SECRET_ID = os.getenv('DB_SECRET_ID', 'dbops-infra-sqlserver-secret')
 AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
+# Must be the workload database, NOT master. sys.tables, sys.dm_db_partition_stats and
+# dm_db_index_physical_stats(DB_ID(), ...) are per-database, so connecting to master
+# reports master's catalog instead of the workload tables.
+DB_NAME = os.getenv('DB_NAME', 'DBOpsLab')
 
 # Helper functions
 def get_db_connection():
@@ -26,7 +30,7 @@ def get_db_connection():
             user=creds['username'],
             password=creds['password'],
             port=creds['port'],
-            database='master'
+            database=DB_NAME
         )
         return conn
     except Exception as e:

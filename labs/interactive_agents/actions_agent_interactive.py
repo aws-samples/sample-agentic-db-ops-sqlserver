@@ -60,6 +60,7 @@ RISK_LEVELS = {
     'update_statistics': 'LOW',
     'unforce_query_plan': 'LOW',
     'reorganize_index': 'LOW',
+    'recompile_object': 'LOW',
     'create_index': 'MEDIUM',
     'force_query_plan': 'MEDIUM',
     'rebuild_index': 'MEDIUM',
@@ -293,6 +294,25 @@ def request_human_approval(action_name: str, risk_level: str, description: str, 
 
 # ===== ACTION TOOLS =====
 
+def _table_from_create_index(statement: str):
+    """Extract the target table from a CREATE INDEX statement, for sp_recompile.
+
+    Returns a schema-qualified name at most two parts long (sp_recompile resolves within the
+    current database, so a three-part name is not valid), or None if it cannot be parsed
+    safely. Returning None is fine: CREATE INDEX invalidates dependent plans on its own.
+    """
+    import re
+    m = re.search(
+        r'\sON\s+((?:\[?[A-Za-z_][A-Za-z0-9_]*\]?\.){0,2}\[?[A-Za-z_][A-Za-z0-9_]*\]?)\s*\(',
+        statement, re.IGNORECASE)
+    if not m:
+        return None
+    parts = [p.strip('[]') for p in m.group(1).split('.') if p.strip('[]')]
+    if not parts:
+        return None
+    return '.'.join(parts[-2:])
+
+
 @tool
 def create_index(create_index_statement: str, reason: str = "") -> Dict[str, Any]:
     """Create an index on the database. MEDIUM-RISK action requiring approval.
@@ -324,6 +344,37 @@ def create_index(create_index_statement: str, reason: str = "") -> Dict[str, Any
         cursor = conn.cursor()
         cursor.execute(create_index_statement)
         conn.commit()
+
+        # Completing the action: force dependent plans to recompile.
+        #
+        # CREATE INDEX already bumps the table's schema version, so dependent cached plans are
+        # invalidated automatically. sp_recompile on the table is belt-and-braces that makes the
+        # behaviour explicit and deterministic for verification. It is scoped to objects
+        # referencing this table - never use DBCC FREEPROCCACHE with no argument, which flushes
+        # the whole instance cache and triggers a server-wide recompile storm.
+        #
+        # Neither affects statements already executing: those keep their original plan until
+        # they finish. That is usually why CPU does not drop immediately after an index is added.
+        recompile = {'attempted': False}
+        table = _table_from_create_index(create_index_statement)
+        if table:
+            recompile = {'attempted': True, 'object': table}
+            try:
+                cursor2 = conn.cursor()
+                cursor2.execute("SET LOCK_TIMEOUT 5000; EXEC sp_recompile @objname = %s", (table,))
+                conn.commit()
+                cursor2.close()
+                recompile['status'] = 'success'
+            except Exception as re_err:
+                msg = str(re_err)
+                recompile['status'] = 'skipped'
+                recompile['error'] = (
+                    'Lock timeout: the table is in use, so plans could not be marked for '
+                    'recompilation. Not a failure - CREATE INDEX already invalidated dependent '
+                    'plans, so new executions will compile fresh.'
+                    if ('lock request time out' in msg.lower() or '1222' in msg) else msg
+                )
+
         cursor.close()
         conn.close()
 
@@ -333,11 +384,81 @@ def create_index(create_index_statement: str, reason: str = "") -> Dict[str, Any
             'risk_level': 'MEDIUM',
             'statement_executed': create_index_statement,
             'reason': reason,
+            'plan_recompile': recompile,
             'message': 'Index created successfully',
+            'verification_note': ('New plans apply to NEW executions only. Statements already '
+                                  'running keep their original plan, so allow in-flight sessions '
+                                  'to finish before judging whether the fix worked.'),
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {'status': 'error', 'error': str(e), 'statement': create_index_statement}
+
+
+@tool
+def recompile_object(object_name: str) -> Dict[str, Any]:
+    """Mark a stored procedure, view, trigger or table for plan recompilation (sp_recompile).
+
+    LOW-RISK action, auto-approved. Non-destructive and self-reverting: it only discards the
+    cached plans, so the next execution compiles a fresh one.
+
+    Use it after creating an index or updating statistics, so callers stop reusing a cached
+    plan built before the change, or when a plan has gone bad and the optimizer should retry.
+
+    IMPORTANT: sp_recompile needs a schema modification lock on the object. If the object is
+    currently executing, that lock is blocked. A 5 second lock timeout is applied so this
+    reports a timeout rather than hanging.
+
+    Args:
+        object_name: Object to recompile, e.g. "sp_MonthlyOrderReport" or "dbo.sp_MonthlyOrderReport"
+    """
+    import re
+    target = (object_name or '').strip()
+    try:
+        # Bound the input to a plain [schema.]object identifier before it reaches SQL Server.
+        if not re.match(r'^\[?[A-Za-z_][A-Za-z0-9_]*\]?(\.\[?[A-Za-z_][A-Za-z0-9_]*\]?)?$', target):
+            return {'status': 'error',
+                    'error': 'Invalid object name. Use [schema.]object with letters, digits '
+                             'and underscores only.'}
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT OBJECT_ID(%s)", (target,))
+        row = cursor.fetchone()
+        if not row or row[0] is None:
+            cursor.close()
+            conn.close()
+            return {'status': 'error', 'error': f"Object '{target}' not found in DBOpsLab"}
+
+        # Fail fast instead of queueing behind executions holding a schema stability lock.
+        cursor.execute("SET LOCK_TIMEOUT 5000; EXEC sp_recompile @objname = %s", (target,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return {
+            'status': 'success',
+            'action': 'recompile_object',
+            'risk_level': 'LOW',
+            'object_name': target,
+            'statement_executed': f"EXEC sp_recompile '{target}'",
+            'message': ('Cached plans discarded. The next execution compiles a fresh plan. '
+                        'Statements already executing keep their original plan until they finish.'),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        msg = str(e)
+        if 'lock request time out' in msg.lower() or '1222' in msg:
+            return {
+                'status': 'error',
+                'action': 'recompile_object',
+                'object_name': target,
+                'error': ('Lock timeout after 5s. The object is currently executing and holds a '
+                          'schema stability lock, which blocks sp_recompile. Wait for those '
+                          'sessions to finish or terminate them, then retry.')
+            }
+        return {'status': 'error', 'error': msg}
 
 
 @tool
@@ -847,7 +968,7 @@ RULES:
 8. If action fails, report the error. Do not retry or try alternatives.
 
 Risk levels:
-- LOW (auto-approve): update_statistics, unforce_query_plan, reorganize_index
+- LOW (auto-approve): update_statistics, unforce_query_plan, reorganize_index, recompile_object
 - MEDIUM (needs approval): create_index, force_query_plan, rebuild_index
 
 Tools:
@@ -855,6 +976,7 @@ Tools:
 - request_human_approval
 - create_index (MEDIUM)
 - update_statistics (LOW)
+- recompile_object (LOW) — sp_recompile; discards cached plans so the next call recompiles
 - check_stale_statistics (read-only)
 - force_query_plan (MEDIUM)
 - unforce_query_plan (LOW)
@@ -874,6 +996,7 @@ agent = Agent(
         request_human_approval,
         create_index,
         update_statistics,
+        recompile_object,
         check_stale_statistics,
         force_query_plan,
         unforce_query_plan,
