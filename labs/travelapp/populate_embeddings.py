@@ -63,7 +63,7 @@ def main():
     print("-" * 40)
 
     for i, row in enumerate(rows, 1):
-        text = f"{row['name']}. {row['Description']}"
+        text = f"{row['name']}. {row['description']}"
         emb = get_embedding(text)
         vec_json = json.dumps(emb)
         cur.execute(f"UPDATE Destinations SET description_vector = CAST('{vec_json}' AS VECTOR(1024)) WHERE destination_id = {row['destination_id']}")
