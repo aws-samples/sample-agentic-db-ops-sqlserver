@@ -68,15 +68,18 @@ def get_database_load(hours_back: int = 24) -> Dict[str, Any]:
         if response['MetricList']:
             datapoints = response['MetricList'][0].get('DataPoints', [])
             if datapoints:
-                loads = [dp['Value'] for dp in datapoints]
-                sorted_dps = sorted(datapoints, key=lambda x: x['Timestamp'])
+                valid_dps = [dp for dp in datapoints if dp.get('Value') is not None]
+                if not valid_dps:
+                    return {'error': 'No valid data points'}
+                loads = [dp['Value'] for dp in valid_dps]
+                sorted_dps = sorted(valid_dps, key=lambda x: x['Timestamp'])
                 
                 # Find peak
-                peak_dp = max(datapoints, key=lambda x: x['Value'])
+                peak_dp = max(valid_dps, key=lambda x: x['Value'])
                 
                 return {
                     'period_seconds': period,
-                    'datapoint_count': len(datapoints),
+                    'datapoint_count': len(valid_dps),
                     'min_load': round(min(loads), 2),
                     'max_load': round(max(loads), 2),
                     'avg_load': round(sum(loads) / len(loads), 2),
@@ -130,7 +133,7 @@ def get_extended_database_load(hours_back: int = 72) -> Dict[str, Any]:
             current_start = current_end
         
         if all_data:
-            loads = [dp['Value'] for dp in all_data]
+            loads = [dp['Value'] for dp in all_data if dp.get('Value') is not None]
             first_datapoint = min(dp['Timestamp'] for dp in all_data)
             last_datapoint = max(dp['Timestamp'] for dp in all_data)
             
@@ -182,8 +185,11 @@ def get_wait_events(hours_back: int = 24) -> Dict[str, Any]:
                 
                 if metric.get('DataPoints'):
                     datapoints = sorted(metric['DataPoints'], key=lambda x: x['Timestamp'])
-                    values = [dp['Value'] for dp in datapoints]
-                    latest = datapoints[-1]
+                    valid_dps = [dp for dp in datapoints if dp.get('Value') is not None]
+                    if not valid_dps:
+                        continue
+                    values = [dp['Value'] for dp in valid_dps]
+                    latest = valid_dps[-1]
                     
                     wait_events[wait_type] = {
                         'current': round(latest['Value'], 2),
@@ -193,7 +199,7 @@ def get_wait_events(hours_back: int = 24) -> Dict[str, Any]:
                     }
                     
                     # Build timeline
-                    for dp in datapoints:
+                    for dp in valid_dps:
                         ts = dp['Timestamp'].isoformat()
                         if ts not in timeline:
                             timeline[ts] = {}

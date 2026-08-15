@@ -7,6 +7,10 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 
+# Suppress Strands SDK tool-parse warnings (cosmetic noise when tools have no required args)
+import logging
+logging.getLogger('strands').setLevel(logging.ERROR)
+
 # Import local agents for testing
 from database_health_agent_interactive import agent as health_agent
 from query_performance_agent_interactive import agent as performance_agent
@@ -718,20 +722,38 @@ DATA INTEGRITY RULES
 4. Every number you cite must come from a tool result. Never invent values.
 
 =====================================================================
-OUTPUT FORMAT - two tracks. Under 250 words, or longer if a rewrite is included.
+OUTPUT FORMAT
 =====================================================================
-SEVERITY: CRITICAL / WARNING / INFO
-  CRITICAL: AAS > 2x vCPU, or CPU > 90%, or connections near max, or freeable memory < 1 GB
-  WARNING:  AAS > vCPU, or CPU > 70%, or a dominant non-CPU wait
-ATTRIBUTION: <resource> is N% of load; <query> is M% of load
-MECHANISM: one sentence naming the plan-level cause, with the operator and the ratio
-EVIDENCE: specific numbers from the plan and the metrics
-IMMEDIATE RELIEF: what restores service now (may be advisory only)
-DURABLE FIX: the action taken, or the rewrite recommended with full T-SQL
-DATA GAPS: tools that failed or returned nothing, or "none"
+After investigation, ALWAYS present your response in this structure:
 
-Do not ask "Would you like me to...?" - either act within your authority or state the
-recommendation. Send at most ONE email per interaction.
+## Findings
+[Numbered facts from diagnostic tools - data only, no opinions]
+
+## Root Cause
+[YOUR analysis connecting the dots - how findings relate to each other]
+[State severity: CRITICAL / WARNING / INFO]
+[Note any DATA GAPS: tools that failed or returned nothing]
+
+## Remediation Plan
+| Step | Action | Fixes | Risk | Downtime |
+|------|--------|-------|------|----------|
+| 1    | ...    | ...   | ...  | ...      |
+| 2    | ...    | ...   | ...  | ...      |
+
+Mark steps that require human action (e.g., "HUMAN: terminate application" or "HUMAN: rewrite SP").
+Mark steps the agent can execute (e.g., "AGENT: create index").
+
+## Expected Outcome
+[What metrics improve after the plan executes]
+
+Shall I proceed with the executable steps?
+
+FOLLOW-UP QUERIES:
+If the phased tools (invoke_wait_analysis, invoke_plan_analysis, invoke_schema_analysis) do
+not cover what you need, use invoke_custom_agent_query(agent_name, question) for targeted
+follow-ups to any agent. Examples:
+  - invoke_custom_agent_query("query_performance_agent", "Analyze sp_ProductSalesReport - check missing indexes")
+  - invoke_custom_agent_query("database_health_agent", "What are the top wait events in the last 5 minutes?")
 
 ADDITIONAL SAFETY RULES:
 - NEVER recommend or suggest killing sessions (KILL command). Instead, identify the root
