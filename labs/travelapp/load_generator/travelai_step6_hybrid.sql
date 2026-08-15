@@ -10,7 +10,7 @@ BEGIN
     
     -- Embed the query
     DECLARE @queryVec VECTOR(1024);
-    EXEC dbo.usp_BedrockEmbedText @InputText = @QueryText, @EmbeddingVector = @queryVec OUTPUT;
+    EXEC dbo.usp_BedrockEmbedText @text = @QueryText, @vector = @queryVec OUTPUT;
     
     -- Vector search (semantic)
     ;WITH VectorResults AS (
