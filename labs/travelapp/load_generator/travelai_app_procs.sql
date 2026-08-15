@@ -6,6 +6,7 @@ USE TravelAI;
 GO
 
 SET NOCOUNT ON;
+GO
 
 -- =============================================
 -- usp_SearchSQL: Pure WHERE clause matching
@@ -114,7 +115,7 @@ BEGIN
     SELECT TOP 3
         'Document' AS ResultType,
         dc.chunk_id AS SourceID,
-        dc.title AS Title,
+        dc.section_path AS Title,
         dc.content AS Snippet,
         ft.[RANK] AS RelevanceScore
     FROM DocumentChunks dc
