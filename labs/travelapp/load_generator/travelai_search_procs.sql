@@ -314,33 +314,6 @@ BEGIN
 END;
 GO
 
-/*------------------------------------------------------------------------------
-  8e. ANN variant (PREVIEW) -- use when a VECTOR INDEX exists and scale demands
-      approximate search. Requires the vector index in file 03 (section 6).
-------------------------------------------------------------------------------
-CREATE OR ALTER PROCEDURE dbo.usp_SemanticSearchChunks_ANN
-    @query_text NVARCHAR(4000),
-    @top_k      INT = 20
-AS
-BEGIN
-    SET NOCOUNT ON;
-    DECLARE @qv VECTOR(1024);
-    EXEC dbo.usp_BedrockEmbedText @text = @query_text, @vector = @qv OUTPUT;
-
-    SELECT TOP (@top_k) WITH APPROXIMATE
-        t.chunk_id,
-        t.content,
-        r.distance
-    FROM VECTOR_SEARCH(
-            TABLE      = dbo.DocumentChunks AS t,
-            COLUMN     = content_vector,
-            SIMILAR_TO = @qv,
-            METRIC     = 'cosine'
-         ) AS r
-    ORDER BY r.distance;   -- distance-only, ascending (ANN requirement)
-END;
-GO
-------------------------------------------------------------------------------*/
 
 
 /*==============================================================================
