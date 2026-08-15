@@ -50,44 +50,44 @@ def main():
     cur.execute("""
         IF NOT EXISTS (
             SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_NAME='Destinations' AND COLUMN_NAME='embedding'
+            WHERE TABLE_NAME='Destinations' AND COLUMN_NAME='description_vector'
         )
-        ALTER TABLE Destinations ADD embedding VECTOR(1024) NULL
+        ALTER TABLE Destinations ADD description_vector VECTOR(1024) NULL
     """)
 
     # Populate Destinations
     cur2 = conn.cursor(as_dict=True)
-    cur2.execute("SELECT DestinationID, CityName, Description FROM Destinations WHERE embedding IS NULL")
+    cur2.execute("SELECT destination_id, name, description FROM Destinations WHERE description_vector IS NULL")
     rows = cur2.fetchall()
     print(f"\nDestinations to embed: {len(rows)}")
     print("-" * 40)
 
     for i, row in enumerate(rows, 1):
-        text = f"{row['CityName']}. {row['Description']}"
+        text = f"{row['name']}. {row['Description']}"
         emb = get_embedding(text)
         vec_json = json.dumps(emb)
-        cur.execute(f"UPDATE Destinations SET embedding = CAST('{vec_json}' AS VECTOR(1024)) WHERE DestinationID = {row['DestinationID']}")
-        print(f"  [{i}/{len(rows)}] {row['CityName']} - embedded")
+        cur.execute(f"UPDATE Destinations SET description_vector = CAST('{vec_json}' AS VECTOR(1024)) WHERE destination_id = {row['destination_id']}")
+        print(f"  [{i}/{len(rows)}] {row['name']} - embedded")
         time.sleep(0.2)  # Rate limiting
 
     # Populate DocumentChunks
-    cur2.execute("SELECT ChunkID, DocumentName, ContentText FROM DocumentChunks WHERE embedding IS NULL")
+    cur2.execute("SELECT chunk_id, title, content_text FROM DocumentChunks WHERE content_vector IS NULL")
     rows = cur2.fetchall()
     print(f"\nDocumentChunks to embed: {len(rows)}")
     print("-" * 40)
 
     for i, row in enumerate(rows, 1):
-        text = f"{row['DocumentName']}. {row['ContentText']}"
+        text = f"{row['title']}. {row['content_text']}"
         emb = get_embedding(text)
         vec_json = json.dumps(emb)
-        cur.execute(f"UPDATE DocumentChunks SET embedding = CAST('{vec_json}' AS VECTOR(1024)) WHERE ChunkID = {row['ChunkID']}")
-        print(f"  [{i}/{len(rows)}] {row['DocumentName']} - embedded")
+        cur.execute(f"UPDATE DocumentChunks SET content_vector = CAST('{vec_json}' AS VECTOR(1024)) WHERE chunk_id = {row['chunk_id']}")
+        print(f"  [{i}/{len(rows)}] {row['title']} - embedded")
         time.sleep(0.2)
 
     # Verify
-    cur.execute("SELECT COUNT(*) FROM Destinations WHERE embedding IS NOT NULL")
+    cur.execute("SELECT COUNT(*) FROM Destinations WHERE description_vector IS NOT NULL")
     dest_count = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM DocumentChunks WHERE embedding IS NOT NULL")
+    cur.execute("SELECT COUNT(*) FROM DocumentChunks WHERE content_vector IS NOT NULL")
     chunk_count = cur.fetchone()[0]
 
     print(f"\n{'=' * 40}")
