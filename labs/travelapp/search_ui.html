@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>TravelHub - Agentic Search</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+header{border-bottom:1px solid #e2e8f0;background:rgba(255,255,255,0.8);backdrop-filter:blur(8px);position:sticky;top:0;z-index:40;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.header-left{display:flex;align-items:center;gap:12px}
+.logo-box{background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:8px;border-radius:12px;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 6px -1px rgba(79,70,229,0.15)}
+.logo-box svg{width:20px;height:20px}
+.logo-text h1{font-size:1.125rem;font-weight:700;letter-spacing:-0.025em}
+.logo-text p{font-size:0.7rem;color:#64748b;font-weight:500;margin-top:1px}
+.header-badges{display:flex;gap:12px}
+.hbadge{background:#fff;border:1px solid #e2e8f0;padding:5px 10px;border-radius:8px;font-size:0.7rem;color:#475569;display:flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(0,0,0,0.05)}
+.hdot{width:7px;height:7px;border-radius:50%}
+.hdot-blue{background:#2563eb}.hdot-purple{background:#9333ea}.hdot-green{background:#059669;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@media(max-width:900px){.header-badges{display:none}}
+.nav{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 24px;display:flex}
+.nav a{padding:12px 20px;font-size:0.8rem;font-weight:600;color:#64748b;text-decoration:none;border-bottom:2px solid transparent;transition:all 0.15s}
+.nav a:hover{color:#1e293b}
+.nav a.active{color:#4f46e5;border-bottom-color:#4f46e5}
+main{flex:1;padding:24px;max-width:1280px;width:100%;margin:0 auto;display:grid;grid-template-columns:380px 1fr;gap:24px}
+@media(max-width:1000px){main{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+.card-title{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;margin-bottom:14px}
+.search-wrap{position:relative}
+.search-input{width:100%;padding:12px 90px 12px 14px;border:2px solid #e2e8f0;border-radius:12px;font-size:0.85rem;outline:none;transition:border 0.15s}
+.search-input:focus{border-color:#6366f1}
+.search-btn{position:absolute;right:6px;top:6px;bottom:6px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;border-radius:8px;padding:0 14px;cursor:pointer;font-weight:600;font-size:0.75rem;transition:transform 0.1s}
+.search-btn:hover{transform:scale(1.02)}
+.search-btn:active{transform:scale(0.97)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.tag{padding:5px 11px;border-radius:8px;font-size:0.7rem;cursor:pointer;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-weight:500;transition:all 0.12s;user-select:none}
+.tag:hover{border-color:#c7d2fe;color:#4f46e5}
+.tag.on{background:#eef2ff;border-color:#a5b4fc;color:#4f46e5}
+.terminal{background:#1e293b;border-radius:12px;padding:14px;margin-top:16px;max-height:200px;overflow-y:auto;font-family:ui-monospace,monospace;font-size:0.68rem;color:#94a3b8;line-height:1.8}
+.terminal .ok{color:#6ee7b7}.terminal .agent{color:#c4b5fd}.terminal .err{color:#fca5a5}
+.term-header{display:flex;justify-content:space-between;align-items:center}
+.term-clear{font-size:0.6rem;color:#94a3b8;cursor:pointer;padding:2px 6px;border-radius:4px}
+.term-clear:hover{background:#334155}
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+.metric-card{background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:16px 18px;position:relative;overflow:hidden;cursor:pointer;transition:all 0.15s}
+.metric-card:hover{box-shadow:0 4px 12px rgba(0,0,0,0.08);transform:translateY(-1px)}
+.metric-card.selected{opacity:1}
+.metric-card.dimmed{opacity:0.4}
+.mc-purple.selected{border-color:#7c3aed}
+.mc-amber.selected{border-color:#d97706}
+.mc-green.selected{border-color:#059669}
+.mc-slate.selected{border-color:#64748b}
+.metric-card h4{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px}
+.metric-card .latency{position:absolute;top:14px;right:14px;font-size:0.68rem;font-weight:600;padding:2px 8px;border-radius:6px}
+.metric-card p{font-size:0.65rem;color:#94a3b8;margin-top:3px;line-height:1.4}
+.metric-card .count{font-size:0.62rem;color:#64748b;margin-top:6px;font-weight:600}
+.metric-bar{height:4px;border-radius:4px;margin-top:10px;background:#f1f5f9}
+.metric-fill{height:4px;border-radius:4px;transition:width 0.5s}
+.mc-purple h4{color:#7c3aed}.mc-purple .latency{background:#f5f3ff;color:#7c3aed}.mc-purple .metric-fill{background:#8b5cf6}
+.mc-amber h4{color:#d97706}.mc-amber .latency{background:#fffbeb;color:#d97706}.mc-amber .metric-fill{background:#f59e0b}
+.mc-green h4{color:#059669}.mc-green .latency{background:#ecfdf5;color:#059669}.mc-green .metric-fill{background:#10b981}
+.mc-slate h4{color:#64748b}.mc-slate .latency{background:#f8fafc;color:#64748b}.mc-slate .metric-fill{background:#94a3b8}
+.strat-section{margin-bottom:20px}
+.strat-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.strat-dot{width:10px;height:10px;border-radius:50%}
+.strat-label{font-size:0.8rem;font-weight:700}
+.strat-meta{font-size:0.65rem;color:#94a3b8;margin-left:auto}
+.results-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.results-grid{grid-template-columns:1fr}}
+.result-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;transition:all 0.15s}
+.result-card:hover{border-color:#c7d2fe;box-shadow:0 4px 12px rgba(0,0,0,0.06);transform:translateY(-2px)}
+.result-body{padding:16px 18px}
+.result-body h4{font-size:0.9rem;font-weight:700;margin-bottom:4px}
+.result-body .desc{font-size:0.72rem;color:#64748b;line-height:1.5;margin-bottom:10px}
+.result-score{float:right;background:#ecfdf5;color:#059669;font-size:0.68rem;font-weight:700;padding:3px 8px;border-radius:6px;border:1px solid #d1fae5}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:0.6rem;padding:3px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;color:#64748b}
+.rag-box{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 18px;margin-top:18px}
+.rag-box h4{font-size:0.72rem;font-weight:700;color:#166534;margin-bottom:10px}
+.rag-chunk{font-size:0.7rem;color:#475569;padding-left:12px;border-left:2px solid #86efac;margin-bottom:8px;line-height:1.5}
+.rag-src{font-size:0.62rem;color:#16a34a;font-weight:600}
+.note-box{font-size:0.72rem;color:#92400e;margin-top:16px;padding:12px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;line-height:1.5}
+.loading{text-align:center;padding:40px;display:none;color:#64748b}
+.loading.on{display:block}
+.spinner{display:inline-block;width:22px;height:22px;border:3px solid #e2e8f0;border-top-color:#6366f1;border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading p{margin-top:8px;font-size:0.75rem}
+.hero-img{width:100%;height:160px;object-fit:cover;border-radius:14px;border:1px solid #e2e8f0;margin-bottom:16px}
+.no-results{font-size:0.72rem;color:#94a3b8;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0}
+</style>
+</head>
+<body>
+<header>
+<div class="header-left">
+
+<div class="logo-text"><h1><img src="/app/static/shark.png" style="height:32px;vertical-align:middle;margin-right:8px">ReefShark Adventures</h1><p>Navigate smarter. Dive deeper.</p></div>
+</div>
+<div class="header-badges">
+<div class="hbadge"><span class="hdot hdot-blue"></span> SQL Server 2025</div>
+<div class="hbadge"><span class="hdot hdot-purple"></span> Bedrock Titan V2</div>
+<div class="hbadge"><span class="hdot hdot-green"></span> Strands Agents</div>
+<a href="/app/loadrunner/" style="font-size:0.72rem;font-weight:700;color:#fff;text-decoration:none;padding:7px 14px;border:none;border-radius:8px;margin-left:12px;background:linear-gradient(135deg,#f59e0b,#ea580c);box-shadow:0 2px 4px rgba(234,88,12,0.3)">Load Runner</a>
+</div>
+</header>
+
+<main>
+<!-- Left Column -->
+<div>
+<img src="/app/static/hero.jpg" class="hero-img" alt="TravelHub" onerror="this.style.display='none'">
+<div class="card">
+<div class="card-title">Search Strategy Hub</div>
+<div class="search-wrap">
+<input type="text" id="search-input" class="search-input" placeholder="Describe your ideal trip..." value="eco-friendly beach snorkeling">
+<button class="search-btn" onclick="doSearch()">Search</button>
+</div>
+<div class="tags" id="tags">
+<span class="tag on" onclick="toggleTag(this)">eco-friendly</span>
+<span class="tag on" onclick="toggleTag(this)">beach</span>
+<span class="tag on" onclick="toggleTag(this)">snorkeling</span>
+<span class="tag" onclick="toggleTag(this)">luxury spa</span>
+<span class="tag" onclick="toggleTag(this)">tropical island</span>
+<span class="tag" onclick="toggleTag(this)">romantic getaway</span>
+<span class="tag" onclick="toggleTag(this)">family adventure</span>
+<span class="tag" onclick="toggleTag(this)">hiking wildlife</span>
+<span class="tag" onclick="toggleTag(this)">budget backpacker</span>
+<span class="tag" onclick="toggleTag(this)">cultural museums</span>
+<span class="tag" onclick="toggleTag(this)">diving coral reef</span>
+<span class="tag" onclick="toggleTag(this)">mountain retreat</span>
+</div>
+</div>
+<div class="card" style="margin-top:16px">
+<div class="term-header">
+<div class="card-title" style="margin-bottom:0">Agent Terminal</div>
+<span class="term-clear" onclick="document.getElementById('term').innerHTML=''">Clear</span>
+</div>
+<div class="terminal" id="term">
+<div>[Ready] Connected to TravelAI database</div>
+<div class="agent">Strategies: usp_SearchSQL, usp_SearchLIKE, usp_SearchFreetext, usp_TravelSearch</div>
+</div>
+</div>
+</div>
+<!-- Right Column -->
+<div>
+<div class="metrics-grid" id="metrics">
+<div class="metric-card mc-purple selected" data-strat="semantic" onclick="filterStrat('semantic')"><h4>Semantic (VECTOR)</h4><span class="latency" id="lat-sem">--</span><p>VECTOR_DISTANCE cosine via Titan V2</p><div class="count" id="cnt-sem">0 results</div><div class="metric-bar"><div class="metric-fill" id="bar-sem" style="width:0%"></div></div></div>
+<div class="metric-card mc-amber selected" data-strat="lexical" onclick="filterStrat('lexical')"><h4>Lexical (FREETEXT)</h4><span class="latency" id="lat-lex">--</span><p>Full-Text Search with word stemming</p><div class="count" id="cnt-lex">0 results</div><div class="metric-bar"><div class="metric-fill" id="bar-lex" style="width:0%"></div></div></div>
+<div class="metric-card mc-green selected" data-strat="hybrid" onclick="filterStrat('hybrid')"><h4>Hybrid (FTS + RAG)</h4><span class="latency" id="lat-hyb">--</span><p>FREETEXT + document chunk retrieval</p><div class="count" id="cnt-hyb">0 results</div><div class="metric-bar"><div class="metric-fill" id="bar-hyb" style="width:0%"></div></div></div>
+<div class="metric-card mc-slate selected" data-strat="sql" onclick="filterStrat('sql')"><h4>SQL Baseline (WHERE)</h4><span class="latency" id="lat-sql">--</span><p>Standard climate/keyword filtering</p><div class="count" id="cnt-sql">0 results</div><div class="metric-bar"><div class="metric-fill" id="bar-sql" style="width:0%"></div></div></div>
+</div>
+<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap" id="filter-bar">
+<span style="font-size:0.65rem;color:#94a3b8;align-self:center;margin-right:4px">Show (click to filter):</span>
+<button class="fbtn active" data-key="semantic" onclick="toggleFilter(this)" style="background:#f5f3ff;border:1px solid #7c3aed;color:#7c3aed;padding:4px 10px;border-radius:6px;font-size:0.65rem;font-weight:600;cursor:pointer">Semantic</button>
+<button class="fbtn active" data-key="lexical" onclick="toggleFilter(this)" style="background:#fffbeb;border:1px solid #d97706;color:#d97706;padding:4px 10px;border-radius:6px;font-size:0.65rem;font-weight:600;cursor:pointer">Lexical</button>
+<button class="fbtn active" data-key="hybrid" onclick="toggleFilter(this)" style="background:#ecfdf5;border:1px solid #059669;color:#059669;padding:4px 10px;border-radius:6px;font-size:0.65rem;font-weight:600;cursor:pointer">Hybrid</button>
+<button class="fbtn active" data-key="sql" onclick="toggleFilter(this)" style="background:#f8fafc;border:1px solid #64748b;color:#64748b;padding:4px 10px;border-radius:6px;font-size:0.65rem;font-weight:600;cursor:pointer">SQL</button>
+<button onclick="unselectAll()" style="background:none;border:none;color:#ef4444;font-size:0.6rem;font-weight:600;cursor:pointer;margin-left:auto">Clear All</button><button onclick="showAll()" style="background:none;border:none;color:#4f46e5;font-size:0.6rem;font-weight:600;cursor:pointer;margin-left:8px">Select All</button>
+</div>
+<div class="loading" id="loading"><div class="spinner"></div><p>Executing 4 search strategies...</p></div>
+<div id="results"></div>
+</div>
+</main>
+<script>
+var activeFilters = {semantic:true, lexical:true, hybrid:true, sql:true};
+var lastData = null;
+
+function toggleTag(el) {
+    el.classList.toggle('on');
+    syncTags();
+}
+
+function syncTags() {
+    var t = [];
+    document.querySelectorAll('.tag.on').forEach(function(e) { t.push(e.textContent); });
+    document.getElementById('search-input').value = t.join(' ');
+}
+
+document.getElementById('search-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doSearch();
+});
+
+function termLog(msg, cls) {
+    var t = document.getElementById('term');
+    var ts = new Date().toLocaleTimeString();
+    t.innerHTML += '<div' + (cls ? ' class="'+cls+'"' : '') + '>[' + ts + '] ' + msg + '</div>';
+    t.scrollTop = t.scrollHeight;
+}
+
+function filterStrat(key) {
+    activeFilters[key] = !activeFilters[key];
+    document.querySelectorAll(".metric-card").forEach(function(card) {
+        var k = card.getAttribute("data-strat");
+        if (!k) return;
+        if (activeFilters[k]) {
+            card.classList.add("selected");
+            card.classList.remove("dimmed");
+        } else {
+            card.classList.remove("selected");
+            card.classList.add("dimmed");
+        }
+    });
+    if (lastData) renderResults(lastData);
+}
+
+function renderResults(data) {
+    var s = data.strategies;
+    var stratOrder = [
+        {key:'semantic', label:'Semantic (VECTOR)', color:'#7c3aed'},
+        {key:'lexical', label:'Lexical (FREETEXT)', color:'#d97706'},
+        {key:'hybrid', label:'Hybrid (FTS + RAG)', color:'#059669'},
+        {key:'sql', label:'SQL Baseline (WHERE)', color:'#64748b'}
+    ];
+    var html = '';
+    stratOrder.forEach(function(st) {
+        if (!activeFilters[st.key]) return;
+        var strat = s[st.key];
+        if (!strat) return;
+        var results = strat.results || [];
+        html += '<div class="strat-section">';
+        html += '<div class="strat-header">';
+        html += '<div class="strat-dot" style="background:'+st.color+'"></div>';
+        html += '<span class="strat-label" style="color:'+st.color+'">' + st.label + '</span>';
+        html += '<span class="strat-meta">' + results.length + ' results | ' + strat.latency + 'ms</span>';
+        html += '</div>';
+        if (results.length === 0) {
+            html += '<div class="no-results">' + (strat.note || 'No results') + '</div>';
+        } else {
+            html += '<div class="results-grid">';
+            results.forEach(function(r) {
+                html += '<div class="result-card"><div class="result-body">';
+                html += '<span class="result-score">' + r.score + '</span>';
+                html += '<h4>' + r.name + '</h4>';
+                html += '<p class="desc">' + (r.description || '') + '</p>';
+                html += '<div class="chips">';
+                html += '<span class="chip">' + r.country + '</span>';
+                html += '<span class="chip">' + r.climate + '</span>';
+                html += '<span class="chip">' + r.season + '</span>';
+                html += '</div></div></div>';
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+    });
+    if (activeFilters.hybrid && s.hybrid && s.hybrid.rag_context && s.hybrid.rag_context.length > 0) {
+        html += '<div class="rag-box"><h4>RAG Context Retrieved</h4>';
+        s.hybrid.rag_context.forEach(function(c) {
+            html += '<div class="rag-chunk"><span class="rag-src">' + c.source + ':</span> ' + c.snippet + '</div>';
+        });
+        html += '</div>';
+    }
+    if (data.vector_note) {
+        html += '<div class="note-box">' + data.vector_note + '</div>';
+    }
+    document.getElementById('results').innerHTML = html;
+}
+
+async function doSearch() {
+    var query = document.getElementById('search-input').value.trim();
+    if (!query) return;
+    termLog('Query: "' + query + '"');
+    termLog('Invoking 4 stored procedures...', 'agent');
+    document.getElementById('loading').className = 'loading on';
+    document.getElementById('results').innerHTML = '';
+    try {
+        var resp = await fetch('/app/api/search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query: query})
+        });
+        var data = await resp.json();
+        document.getElementById('loading').className = 'loading';
+        if (data.error) {
+            termLog('Error: ' + data.error, 'err');
+            document.getElementById('results').innerHTML = '<div class="note-box">' + data.error + '</div>';
+            return;
+        }
+        lastData = data;
+        var s = data.strategies;
+        if (s.semantic) {
+            document.getElementById('lat-sem').textContent = s.semantic.latency ? s.semantic.latency+'ms' : 'N/A';
+            document.getElementById('cnt-sem').textContent = s.semantic.count + ' results' + (s.semantic.note ? ' - '+s.semantic.note : '');
+            document.getElementById('bar-sem').style.width = s.semantic.latency ? Math.min(100,s.semantic.latency*2)+'%' : '0%';
+        }
+        if (s.lexical) {
+            document.getElementById('lat-lex').textContent = s.lexical.latency+'ms';
+            document.getElementById('cnt-lex').textContent = s.lexical.count+' results';
+            document.getElementById('bar-lex').style.width = Math.min(100,s.lexical.latency*3)+'%';
+        }
+        if (s.hybrid) {
+            document.getElementById('lat-hyb').textContent = s.hybrid.latency+'ms';
+            document.getElementById('cnt-hyb').textContent = s.hybrid.count+' results';
+            document.getElementById('bar-hyb').style.width = Math.min(100,s.hybrid.latency*3)+'%';
+        }
+        if (s.sql) {
+            document.getElementById('lat-sql').textContent = s.sql.latency+'ms';
+            document.getElementById('cnt-sql').textContent = s.sql.count+' results';
+            document.getElementById('bar-sql').style.width = Math.min(100,s.sql.latency*5+5)+'%';
+        }
+        renderResults(data);
+        termLog('Results across 4 strategies', 'ok');
+    } catch(e) {
+        document.getElementById('loading').className = 'loading';
+        termLog('Network error: ' + e.message, 'err');
+    }
+}
+function toggleFilter(btn) {
+    var key = btn.getAttribute("data-key");
+    var wasOnly = !activeFilters.semantic && !activeFilters.lexical && !activeFilters.hybrid && !activeFilters.sql;
+    if (!wasOnly) {
+        var onlyThisActive = activeFilters[key];
+        var othersOff = true;
+        var keys = ["semantic","lexical","hybrid","sql"];
+        keys.forEach(function(k){ if(k!==key && activeFilters[k]) othersOff=false; });
+        if (onlyThisActive && othersOff) {
+            showAll();
+            return;
+        }
+    }
+    activeFilters = {semantic:false, lexical:false, hybrid:false, sql:false};
+    activeFilters[key] = true;
+    document.querySelectorAll("#filter-bar .fbtn").forEach(function(b){
+        if(b.getAttribute("data-key")===key){b.style.opacity="1";b.classList.add("active");}
+        else{b.style.opacity="0.35";b.classList.remove("active");}
+    });
+    updateCards();
+    if (lastData) renderResults(lastData);
+}
+function showAll() {
+    activeFilters = {semantic:true, lexical:true, hybrid:true, sql:true};
+    document.querySelectorAll("#filter-bar .fbtn").forEach(function(b){b.style.opacity="1";b.classList.add("active")});
+    updateCards();
+    if (lastData) renderResults(lastData);
+}
+function updateCards() {
+    document.querySelectorAll(".metric-card").forEach(function(card) {
+        var k = card.getAttribute("data-strat");
+        if (!k) return;
+        if (activeFilters[k]) { card.classList.add("selected"); card.classList.remove("dimmed"); }
+        else { card.classList.remove("selected"); card.classList.add("dimmed"); }
+    });
+}
+function unselectAll() {
+    activeFilters = {semantic:false, lexical:false, hybrid:false, sql:false};
+    document.querySelectorAll("#filter-bar .fbtn").forEach(function(b){b.style.opacity="0.35";b.classList.remove("active")});
+    updateCards();
+    if (lastData) renderResults(lastData);
+}
+</script>
+</body>
+</html>
