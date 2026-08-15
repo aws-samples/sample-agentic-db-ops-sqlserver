@@ -28,17 +28,17 @@ BEGIN
         SET @Climate = 'Arctic';
 
     IF @Climate IS NOT NULL
-        SELECT TOP (@TopK) DestinationID, CityName AS Title, Country, Continent, Climate, Season, Description AS Snippet, PopularityScore, 100 AS RelevanceScore
-        FROM Destinations WHERE Climate = @Climate ORDER BY PopularityScore DESC;
+        SELECT TOP (@TopK) destination_id, name AS Title, country_code, region, climate, best_season, LEFT(description,200) AS Snippet, popularity_score, 100 AS RelevanceScore
+        FROM Destinations WHERE Climate = @Climate ORDER BY popularity_score DESC;
     ELSE
-        SELECT TOP (@TopK) DestinationID, CityName AS Title, Country, Continent, Climate, Season, Description AS Snippet, PopularityScore, 50 AS RelevanceScore
-        FROM Destinations ORDER BY PopularityScore DESC;
+        SELECT TOP (@TopK) destination_id, name AS Title, country_code, region, climate, best_season, LEFT(description,200) AS Snippet, popularity_score, 50 AS RelevanceScore
+        FROM Destinations ORDER BY popularity_score DESC;
 END;
 GO
 
 -- =============================================
 -- usp_SearchLIKE: LIKE pattern matching
--- Splits first two words, searches Description + CityName + Country
+-- Splits first two words, searches description + name + Country
 -- =============================================
 CREATE OR ALTER PROCEDURE dbo.usp_SearchLIKE
     @QueryText NVARCHAR(1000),
@@ -54,14 +54,14 @@ BEGIN
             CHARINDEX(' ', @QueryText + ' ', CHARINDEX(' ', @QueryText) + 1) - CHARINDEX(' ', @QueryText) - 1);
 
     SELECT TOP (@TopK) 
-        DestinationID, CityName AS Title, Country, Continent, Climate, Season, 
-        Description AS Snippet, PopularityScore, 120 AS RelevanceScore
+        destination_id, name AS Title, country_code, region, climate, best_season, 
+        description AS Snippet, popularity_score, 120 AS RelevanceScore
     FROM Destinations
     WHERE Description LIKE '%' + @Word1 + '%'
        OR (@Word2 IS NOT NULL AND Description LIKE '%' + @Word2 + '%')
-       OR CityName LIKE '%' + @Word1 + '%'
-       OR Country LIKE '%' + @Word1 + '%'
-    ORDER BY PopularityScore DESC;
+       OR name LIKE '%' + @Word1 + '%'
+       OR country_code LIKE '%' + @Word1 + '%'
+    ORDER BY popularity_score DESC;
 END;
 GO
 
@@ -75,9 +75,9 @@ CREATE OR ALTER PROCEDURE dbo.usp_SearchFreetext
 AS
 BEGIN
     SET NOCOUNT ON;
-    SELECT TOP (@TopK) d.DestinationID, d.CityName AS Title, d.Country, d.Continent, d.Climate, d.Season, d.Description AS Snippet, d.PopularityScore, ft.[RANK] AS RelevanceScore
+    SELECT TOP (@TopK) d.destination_id, d.name AS Title, d.country_code, d.region, d.climate, d.best_season, d.description AS Snippet, d.popularity_score, ft.[RANK] AS RelevanceScore
     FROM Destinations d
-    INNER JOIN FREETEXTTABLE(Destinations, Description, @QueryText) ft ON d.DestinationID = ft.[KEY]
+    INNER JOIN FREETEXTTABLE(Destinations, description, @QueryText) ft ON d.destination_id = ft.[KEY]
     ORDER BY ft.[RANK] DESC;
 END;
 GO
@@ -96,30 +96,30 @@ BEGIN
     -- Result set 1: Destinations ranked by Full-Text relevance
     SELECT TOP (@TopK)
         'Destination' AS ResultType,
-        d.DestinationID AS SourceID,
-        d.CityName AS Title,
-        d.Country,
-        d.Continent,
-        d.Climate,
-        d.Season,
-        d.Description AS Snippet,
-        d.PopularityScore,
+        d.destination_id AS SourceID,
+        d.name AS Title,
+        d.country_code,
+        d.region,
+        d.climate,
+        d.best_season,
+        d.description AS Snippet,
+        d.popularity_score,
         ft.[RANK] AS RelevanceScore
     FROM Destinations d
-    INNER JOIN FREETEXTTABLE(Destinations, Description, @QueryText) ft
-        ON d.DestinationID = ft.[KEY]
+    INNER JOIN FREETEXTTABLE(Destinations, description, @QueryText) ft
+        ON d.destination_id = ft.[KEY]
     ORDER BY ft.[RANK] DESC;
 
     -- Result set 2: RAG context from document chunks
     SELECT TOP 3
         'Document' AS ResultType,
-        dc.ChunkID AS SourceID,
-        dc.DocumentName AS Title,
-        dc.ContentText AS Snippet,
+        dc.chunk_id AS SourceID,
+        dc.title AS Title,
+        dc.content AS Snippet,
         ft.[RANK] AS RelevanceScore
     FROM DocumentChunks dc
-    INNER JOIN FREETEXTTABLE(DocumentChunks, ContentText, @QueryText) ft
-        ON dc.ChunkID = ft.[KEY]
+    INNER JOIN FREETEXTTABLE(DocumentChunks, content, @QueryText) ft
+        ON dc.chunk_id = ft.[KEY]
     ORDER BY ft.[RANK] DESC;
 END;
 GO
