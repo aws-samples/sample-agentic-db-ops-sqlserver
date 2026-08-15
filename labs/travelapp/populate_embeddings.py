@@ -71,17 +71,17 @@ def main():
         time.sleep(0.2)  # Rate limiting
 
     # Populate DocumentChunks
-    cur2.execute("SELECT chunk_id, title, content_text FROM DocumentChunks WHERE content_vector IS NULL")
+    cur2.execute("SELECT chunk_id, section_path, content FROM DocumentChunks WHERE content_vector IS NULL")
     rows = cur2.fetchall()
     print(f"\nDocumentChunks to embed: {len(rows)}")
     print("-" * 40)
 
     for i, row in enumerate(rows, 1):
-        text = f"{row['title']}. {row['content_text']}"
+        text = f"{row['section_path'] or 'chunk'}. {row['content']}"
         emb = get_embedding(text)
         vec_json = json.dumps(emb)
         cur.execute(f"UPDATE DocumentChunks SET content_vector = CAST('{vec_json}' AS VECTOR(1024)) WHERE chunk_id = {row['chunk_id']}")
-        print(f"  [{i}/{len(rows)}] {row['title']} - embedded")
+        print(f"  [{i}/{len(rows)}] {row['section_path'] or 'chunk'} - embedded")
         time.sleep(0.2)
 
     # Verify
