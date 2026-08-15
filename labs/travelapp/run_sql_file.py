@@ -71,9 +71,19 @@ for batch in batches:
     batch_num += 1
     try:
         cursor.execute(batch)
-        # Fetch and print messages
-        while cursor.nextset():
-            pass
+        # Print any result sets
+        while True:
+            if cursor.description:
+                cols = [d[0] for d in cursor.description]
+                rows = cursor.fetchall()
+                if rows:
+                    print('  '.join(cols))
+                    print('  '.join(['-' * len(c) for c in cols]))
+                    for row in rows:
+                        print('  '.join([str(v) if v is not None else 'NULL' for v in row]))
+                    print()
+            if not cursor.nextset():
+                break
     except Exception as e:
         print(f"Error in batch {batch_num}: {e}")
 
