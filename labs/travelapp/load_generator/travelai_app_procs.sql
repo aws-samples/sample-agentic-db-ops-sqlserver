@@ -29,10 +29,10 @@ BEGIN
         SET @Climate = 'Arctic';
 
     IF @Climate IS NOT NULL
-        SELECT TOP (@TopK) destination_id, name AS Title, country_code, region, climate, best_season, LEFT(description,200) AS Snippet, popularity_score, 100 AS RelevanceScore
+        SELECT TOP (@TopK) destination_id, name AS Title, country_code AS Country, region AS Continent, climate AS Climate, best_season AS Season, LEFT(description,200) AS Snippet, popularity_score, 100 AS RelevanceScore
         FROM Destinations WHERE Climate = @Climate ORDER BY popularity_score DESC;
     ELSE
-        SELECT TOP (@TopK) destination_id, name AS Title, country_code, region, climate, best_season, LEFT(description,200) AS Snippet, popularity_score, 50 AS RelevanceScore
+        SELECT TOP (@TopK) destination_id, name AS Title, country_code AS Country, region AS Continent, climate AS Climate, best_season AS Season, LEFT(description,200) AS Snippet, popularity_score, 50 AS RelevanceScore
         FROM Destinations ORDER BY popularity_score DESC;
 END;
 GO
@@ -55,7 +55,7 @@ BEGIN
             CHARINDEX(' ', @QueryText + ' ', CHARINDEX(' ', @QueryText) + 1) - CHARINDEX(' ', @QueryText) - 1);
 
     SELECT TOP (@TopK) 
-        destination_id, name AS Title, country_code, region, climate, best_season, 
+        destination_id, name AS Title, country_code AS Country, region AS Continent, climate AS Climate, best_season AS Season, 
         description AS Snippet, popularity_score, 120 AS RelevanceScore
     FROM Destinations
     WHERE Description LIKE '%' + @Word1 + '%'
@@ -76,7 +76,7 @@ CREATE OR ALTER PROCEDURE dbo.usp_SearchFreetext
 AS
 BEGIN
     SET NOCOUNT ON;
-    SELECT TOP (@TopK) d.destination_id, d.name AS Title, d.country_code, d.region, d.climate, d.best_season, d.description AS Snippet, d.popularity_score, ft.[RANK] AS RelevanceScore
+    SELECT TOP (@TopK) d.destination_id, d.name AS Title, d.country_code AS Country, d.region AS Continent, d.climate AS Climate, d.best_season AS Season, d.description AS Snippet, d.popularity_score, ft.[RANK] AS RelevanceScore
     FROM Destinations d
     INNER JOIN FREETEXTTABLE(Destinations, description, @QueryText) ft ON d.destination_id = ft.[KEY]
     ORDER BY ft.[RANK] DESC;
@@ -99,10 +99,10 @@ BEGIN
         'Destination' AS ResultType,
         d.destination_id AS SourceID,
         d.name AS Title,
-        d.country_code,
-        d.region,
-        d.climate,
-        d.best_season,
+        d.country_code AS Country,
+        d.region AS Continent,
+        d.climate AS Climate,
+        d.best_season AS Season,
         d.description AS Snippet,
         d.popularity_score,
         ft.[RANK] AS RelevanceScore
