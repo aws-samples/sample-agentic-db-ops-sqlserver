@@ -1,19 +1,24 @@
-/*==============================================================================
-  TravelAI Database - CREATE SCHEMA
-
-  Creates the TravelAI database and all base tables (core travel domain,
-  RAG knowledge base, retrieval diagnostics log) and the RerankInput table type.
-
-  Every searchable entity carries three retrieval surfaces:
-    * descriptive text  (full-text indexed)
-    * a VECTOR embedding (semantic search; populated by the Bedrock embed procs)
-    * a native json metadata bag + persisted computed columns (indexed SQL filters)
-==============================================================================*/
+-- TravelAI Setup: Database + Schema + Indexes + Seed Data
+-- Run this first to create the TravelAI database with all tables and sample data.
+-- Usage: python3.11 run_sql_file.py load_generator/travelai_setup.sql
 
 IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'TravelAI')
     CREATE DATABASE TravelAI;
 GO
 
+/*==============================================================================
+  FILE 02 of 05 : CREATE SCHEMA  (tables + table types)
+
+  Run AFTER 01_prerequisites.sql. Creates all base tables (core travel domain,
+  RAG knowledge base, retrieval diagnostics log) and the RerankInput table type.
+  Types/tables are created here, BEFORE the stored procedures in file 04 that
+  depend on them (a user-defined table type must exist at CREATE PROCEDURE time).
+
+  Every searchable entity carries three retrieval surfaces:
+    * descriptive text  (full-text indexed in file 03)
+    * a VECTOR embedding (semantic search; populated by the Bedrock embed procs)
+    * a native json metadata bag + persisted computed columns (indexed SQL filters)
+==============================================================================*/
 USE TravelAI;
 GO
 
