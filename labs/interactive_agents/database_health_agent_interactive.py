@@ -664,7 +664,9 @@ Database/application-level workload (what is happening inside?):
 - get_users: Users and their load contribution
 - get_applications: Applications and their load contribution
 
-Return the raw tool outputs. Do not add severity labels, thresholds, or a formatted report — the Supervisor interprets the data."""
+Return the raw tool outputs. Do not add severity labels, thresholds, or a formatted report — the Supervisor interprets the data.
+
+IMPORTANT: After calling each tool, you MUST write the tool results into your text response. Do not just call tools silently — the Supervisor can only read your text output, not the tool return values directly."""
 
 agent = Agent(
     system_prompt=system_prompt,
