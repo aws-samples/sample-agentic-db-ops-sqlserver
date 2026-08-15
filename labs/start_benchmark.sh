@@ -53,6 +53,10 @@ else
     python3 $SCRIPT_DIR/load_generator/run_sql_file.py $SCRIPT_DIR/load_generator/02_create_high_cpu_procedure.sql
 fi
 
+# Apply optimized sp_MonthlyOrderReport (replaces the anti-pattern version)
+echo "Applying optimized sp_MonthlyOrderReport..."
+python3 $SCRIPT_DIR/load_generator/run_sql_file.py $SCRIPT_DIR/load_generator/06_new_monthly_order_report.sql
+
 # Create workload script that calls stored procedures
 cat > /tmp/sp_workload.py << 'PYEOF'
 import pymssql
