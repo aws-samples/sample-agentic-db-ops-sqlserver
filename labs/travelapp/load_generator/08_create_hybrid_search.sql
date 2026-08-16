@@ -1,3 +1,5 @@
+-- Hybrid Search with Reciprocal Rank Fusion (Vector + Full-Text)
+-- Usage: python3.11 run_sql_file.py load_generator/08_create_hybrid_search.sql
 USE TravelAI;
 GO
 
@@ -7,28 +9,22 @@ CREATE OR ALTER PROCEDURE dbo.usp_HybridSearch
 AS
 BEGIN
     SET NOCOUNT ON;
-    
-    -- Embed the query
-    DECLARE @queryVec VECTOR(1024);
-    EXEC dbo.usp_BedrockEmbedText @text = @QueryText, @vector = @queryVec OUTPUT;
-    
-    -- Vector search (semantic)
+    DECLARE @queryVec VECTOR(1024) = AI_GENERATE_EMBEDDINGS(@QueryText USE MODEL bedrock_embed);
+
     ;WITH VectorResults AS (
         SELECT destination_id,
                ROW_NUMBER() OVER (ORDER BY VECTOR_DISTANCE('cosine', description_vector, @queryVec) ASC) AS VectorRank
         FROM Destinations WHERE description_vector IS NOT NULL
     ),
-    -- Full-Text search (lexical)
     FTSResults AS (
         SELECT [KEY] AS destination_id,
                ROW_NUMBER() OVER (ORDER BY [RANK] DESC) AS FTSRank
         FROM FREETEXTTABLE(Destinations, description, @QueryText)
     )
-    -- Reciprocal Rank Fusion
     SELECT TOP (@TopK)
-        d.name AS Title, d.country_code AS Country, d.region AS Continent, 
+        d.name AS Title, d.country_code AS Country, d.region AS Continent,
         d.climate AS Climate, d.best_season AS Season,
-        LEFT(d.description, 200) AS Snippet, d.popularity_score,
+        LEFT(d.description, 200) AS Snippet,
         (1.0 / (60 + ISNULL(v.VectorRank, 100))) + (1.0 / (60 + ISNULL(f.FTSRank, 100))) AS RRFScore
     FROM Destinations d
     LEFT JOIN VectorResults v ON d.destination_id = v.destination_id
@@ -36,7 +32,6 @@ BEGIN
     WHERE v.destination_id IS NOT NULL OR f.destination_id IS NOT NULL
     ORDER BY RRFScore DESC;
 
-    -- RAG context from document chunks
     ;WITH ChunkVector AS (
         SELECT chunk_id,
                ROW_NUMBER() OVER (ORDER BY VECTOR_DISTANCE('cosine', content_vector, @queryVec) ASC) AS Rank
@@ -50,6 +45,6 @@ BEGIN
 END;
 GO
 
--- Test it
+-- Test
 EXEC usp_HybridSearch 'sustainable eco-friendly family vacation with ocean activities';
 GO

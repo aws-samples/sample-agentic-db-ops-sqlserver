@@ -1,6 +1,5 @@
--- TravelAI Setup: Database + Schema + Indexes + Seed Data
--- Run this first to create the TravelAI database with all tables and sample data.
--- Usage: python3.11 run_sql_file.py load_generator/travelai_setup.sql
+-- TravelAI Database Setup: CREATE DATABASE + Schema + Indexes + Seed Data
+-- Usage: python3.11 run_sql_file.py load_generator/01_create_database.sql
 
 IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'TravelAI')
     CREATE DATABASE TravelAI;
