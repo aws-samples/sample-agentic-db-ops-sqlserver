@@ -1,6 +1,10 @@
 USE TravelAI;
 GO
 
+-- Enable preview features (required for vector index)
+ALTER DATABASE SCOPED CONFIGURATION SET PREVIEW_FEATURES = ON;
+GO
+
 -- Drop existing vector index if re-running
 IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Destinations_Vector')
     DROP INDEX IX_Destinations_Vector ON Destinations;
