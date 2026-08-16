@@ -180,3 +180,56 @@ print(f"DONE! Embedding proxy deployed.")
 print(f"Endpoint: {endpoint}")
 print(f"\nNext: python3.11 run_sql_file.py load_generator/04_register_model.sql")
 print(f"{'='*60}")
+
+# Step 5: Register External Model in SQL Server
+print("\n5. Registering external model in SQL Server...")
+import pymssql
+
+sm = boto3.client('secretsmanager', region_name=region)
+creds = json.loads(sm.get_secret_value(SecretId='dbops-infra-sqlserver-secret')['SecretString'])
+conn = pymssql.connect(server=creds['host'], user=creds['username'], password=creds['password'], port=int(creds['port']), database='TravelAI')
+conn.autocommit(True)
+cur = conn.cursor()
+
+# Drop existing if re-running
+try:
+    cur.execute("DROP EXTERNAL MODEL bedrock_embed")
+except:
+    pass
+try:
+    cur.execute(f"DROP DATABASE SCOPED CREDENTIAL [{endpoint}]")
+except:
+    pass
+
+# Create credential
+cur.execute(f"""
+CREATE DATABASE SCOPED CREDENTIAL [{endpoint}]
+WITH IDENTITY = 'HTTPEndpointHeaders',
+     SECRET = '{{"x-api-key":"none"}}'
+""")
+
+# Create external model
+cur.execute(f"""
+CREATE EXTERNAL MODEL bedrock_embed
+WITH (
+    LOCATION = '{endpoint}',
+    API_FORMAT = 'OpenAI',
+    MODEL_TYPE = EMBEDDINGS,
+    MODEL = 'amazon.titan-embed-text-v2',
+    CREDENTIAL = [{endpoint}]
+)
+""")
+print("   External model 'bedrock_embed' registered")
+
+# Test
+cur.execute("SELECT DATALENGTH(AI_GENERATE_EMBEDDINGS(N'test embedding' USE MODEL bedrock_embed))")
+row = cur.fetchone()
+print(f"   Test embedding: {row[0]} bytes")
+conn.close()
+
+print(f"\n{'='*60}")
+print(f"ALL DONE! Pipeline ready.")
+print(f"  Endpoint: {endpoint}")
+print(f"  Model: bedrock_embed")
+print(f"\nNext: python3.11 run_sql_file.py load_generator/04_populate_vectors.sql")
+print(f"{'='*60}")
