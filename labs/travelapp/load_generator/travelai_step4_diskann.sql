@@ -1,6 +1,11 @@
 USE TravelAI;
 GO
 
+-- Drop existing vector index if re-running
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Destinations_Vector')
+    DROP INDEX IX_Destinations_Vector ON Destinations;
+GO
+
 -- Create vector index on destinations (enables fast ANN search)
 CREATE VECTOR INDEX IX_Destinations_Vector
 ON Destinations(description_vector)
