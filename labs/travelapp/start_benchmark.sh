@@ -40,13 +40,13 @@ if [ "$DB_EXISTS" = "yes" ]; then
     echo "TravelHub database already exists with data. Skipping setup..."
 else
     echo "Running schema setup (01_create_schema.sql)..."
-    python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/01_create_schema.sql
+    python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/travelhub/01_create_schema.sql
 
     echo "Populating data (02_populate_data.sql)..."
-    python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/02_populate_data.sql
+    python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/travelhub/02_populate_data.sql
 
     echo "Creating stored procedures (03_create_bad_procedures.sql)..."
-    python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/03_create_bad_procedures.sql
+    python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/travelhub/03_create_bad_procedures.sql
 fi
 
 # Create workload script
