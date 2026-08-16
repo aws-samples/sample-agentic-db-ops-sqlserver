@@ -127,3 +127,28 @@ GO
 
 PRINT 'Search SPs created: usp_SearchSQL, usp_SearchLIKE, usp_SearchFreetext, usp_TravelSearch';
 GO
+
+-- =============================================
+-- usp_SearchVector: Semantic vector search using VECTOR_DISTANCE
+-- =============================================
+CREATE OR ALTER PROCEDURE dbo.usp_SearchVector
+    @QueryEmbedding VECTOR(1024),
+    @TopK INT = 5
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT TOP(@TopK)
+        d.destination_id,
+        d.name AS Title,
+        d.country_code AS Country,
+        d.region AS Continent,
+        d.climate AS Climate,
+        d.best_season AS Season,
+        LEFT(d.description, 200) AS Snippet,
+        d.popularity_score,
+        CAST(VECTOR_DISTANCE('cosine', d.description_vector, @QueryEmbedding) * 1000 AS INT) AS RelevanceScore
+    FROM Destinations d
+    WHERE d.description_vector IS NOT NULL
+    ORDER BY VECTOR_DISTANCE('cosine', d.description_vector, @QueryEmbedding) ASC;
+END;
+GO

@@ -424,14 +424,31 @@ def search_api():
             chunks = cur.fetchall()
         hybrid_ms = int((time.time()-t0)*1000)
 
+        # Strategy 5: Vector (VECTOR_DISTANCE via Bedrock embedding)
+        vec_rows = []
+        vec_ms = 0
+        try:
+            import boto3 as _b3
+            _bedrock = _b3.client('bedrock-runtime', region_name='us-west-2')
+            _emb_resp = _bedrock.invoke_model(modelId='amazon.titan-embed-text-v2:0', contentType='application/json', accept='application/json', body=json.dumps({'inputText': query[:8000], 'dimensions': 1024}))
+            _emb = json.loads(_emb_resp['body'].read())['embedding']
+            _vec_json = json.dumps(_emb)
+            t0 = time.time()
+            cur.execute("DECLARE @qv VECTOR(1024) = CAST(%s AS VECTOR(1024)); EXEC usp_SearchVector @qv, 5", (_vec_json,))
+            vec_rows = cur.fetchall()
+            vec_ms = int((time.time()-t0)*1000)
+        except:
+            pass
+
         conn.close()
 
         rag = [{'source':c['Title'],'snippet':c['Snippet'] or ''} for c in chunks]
 
         return jsonify({
             'query': query, 'winner': 'hybrid',
-            'vector_note': 'Vector search (VECTOR_DISTANCE) activates once Bedrock embeddings are populated. VECTOR(1024) column ready on SQL Server 2025.',
+            'vector_note': 'All strategies active. Semantic uses Titan V2 1024-dim embeddings with VECTOR_DISTANCE cosine.' if vec_rows else 'Vector search (VECTOR_DISTANCE) activates once Bedrock embeddings are populated.',
             'strategies': {
+                'semantic': {'name':'Semantic (VECTOR_DISTANCE)','description':'Cosine similarity via Titan V2 embeddings.','latency':vec_ms,'results':fmt(vec_rows),'count':len(vec_rows)},
                 'sql_only': {'name':'SQL Only (WHERE)','description':'Pure SQL filtering by climate keyword. Fast but low relevance.','latency':sql_ms,'results':fmt(sql_rows),'count':len(sql_rows)},
                 'like': {'name':'LIKE Pattern','description':'LIKE matching on descriptions. Exact substring match only.','latency':like_ms,'results':fmt(like_rows),'count':len(like_rows)},
                 'freetext': {'name':'Full-Text (FREETEXT)','description':'SQL Server Full-Text Search with stemming and word forms.','latency':fts_ms,'results':fmt(fts_rows),'count':len(fts_rows)},
