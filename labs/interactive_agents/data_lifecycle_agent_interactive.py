@@ -14,7 +14,7 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 # Must be the workload database, NOT master. sys.tables, sys.dm_db_partition_stats and
 # dm_db_index_physical_stats(DB_ID(), ...) are per-database, so connecting to master
 # reports master's catalog instead of the workload tables.
-DB_NAME = os.getenv('DB_NAME', 'DBOpsLab')
+DB_NAME = os.getenv('DB_NAME', 'TravelHub')
 
 # Helper functions
 def get_db_connection():

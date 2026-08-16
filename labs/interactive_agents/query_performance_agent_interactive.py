@@ -14,7 +14,7 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 # Must be the workload database, NOT master. Query Store options
 # (sys.database_query_store_options) and the missing-index / index-usage DMVs are
 # scoped by DB_ID(), so connecting to master makes them silently return no rows.
-DB_NAME = os.getenv('DB_NAME', 'DBOpsLab')
+DB_NAME = os.getenv('DB_NAME', 'TravelHub')
 
 # Helper functions
 def get_pi_client():

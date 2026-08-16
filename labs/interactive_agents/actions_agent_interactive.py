@@ -47,7 +47,7 @@ def get_db_connection():
             user=creds['username'],
             password=creds['password'],
             port=creds['port'],
-            database='DBOpsLab'
+            database=os.getenv('DB_NAME', 'TravelHub')
         )
         return conn
     except Exception as e:
@@ -429,7 +429,7 @@ def recompile_object(object_name: str) -> Dict[str, Any]:
         if not row or row[0] is None:
             cursor.close()
             conn.close()
-            return {'status': 'error', 'error': f"Object '{target}' not found in DBOpsLab"}
+            return {'status': 'error', 'error': f"Object '{target}' not found in database"}
 
         # Fail fast instead of queueing behind executions holding a schema stability lock.
         cursor.execute("SET LOCK_TIMEOUT 5000; EXEC sp_recompile @objname = %s", (target,))
