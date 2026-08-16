@@ -1,3 +1,5 @@
+SET QUOTED_IDENTIFIER ON;
+GO
 -- TravelAI Search Procedures
 -- Usage: python3.11 run_sql_file.py load_generator/02_create_search_procedures.sql
 USE TravelAI;

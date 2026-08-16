@@ -1,3 +1,5 @@
+SET QUOTED_IDENTIFIER ON;
+GO
 -- Create vector indexes for fast ANN search
 -- Usage: python3.11 run_sql_file.py load_generator/06_create_vector_index.sql
 USE TravelAI;

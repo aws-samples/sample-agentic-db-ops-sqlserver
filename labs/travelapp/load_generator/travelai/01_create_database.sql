@@ -1,3 +1,5 @@
+SET QUOTED_IDENTIFIER ON;
+GO
 -- TravelAI Database Setup: CREATE DATABASE + Schema + Indexes + Seed Data
 -- Usage: python3.11 run_sql_file.py load_generator/01_create_database.sql
 

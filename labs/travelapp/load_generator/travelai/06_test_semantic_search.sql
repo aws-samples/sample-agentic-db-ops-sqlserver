@@ -1,3 +1,5 @@
+SET QUOTED_IDENTIFIER ON;
+GO
 -- Test semantic search with VECTOR_DISTANCE
 -- Usage: python3.11 run_sql_file.py load_generator/07_test_semantic_search.sql
 USE TravelAI;

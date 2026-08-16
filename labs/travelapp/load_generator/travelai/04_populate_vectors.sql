@@ -1,3 +1,5 @@
+SET QUOTED_IDENTIFIER ON;
+GO
 -- Populate vector embeddings using AI_GENERATE_EMBEDDINGS
 -- Usage: python3.11 run_sql_file.py load_generator/04_populate_vectors.sql
 USE TravelAI;

@@ -1,3 +1,5 @@
+SET QUOTED_IDENTIFIER ON;
+GO
 -- Hybrid Search with Reciprocal Rank Fusion (Vector + Full-Text)
 -- Usage: python3.11 run_sql_file.py load_generator/08_create_hybrid_search.sql
 USE TravelAI;
