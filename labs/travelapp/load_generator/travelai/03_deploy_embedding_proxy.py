@@ -191,6 +191,9 @@ conn = pymssql.connect(server=creds['host'], user=creds['username'], password=cr
 conn.autocommit(True)
 cur = conn.cursor()
 
+# Create master key if not exists
+cur.execute("IF NOT EXISTS (SELECT 1 FROM sys.symmetric_keys WHERE name = N'##MS_DatabaseMasterKey##') CREATE MASTER KEY ENCRYPTION BY PASSWORD = N'Str0ngP@ss2026!'")
+
 # Drop existing if re-running
 try:
     cur.execute("DROP EXTERNAL MODEL bedrock_embed")
