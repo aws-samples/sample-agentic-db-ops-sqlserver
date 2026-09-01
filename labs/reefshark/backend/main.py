@@ -1,10 +1,13 @@
 """
-TravelAI Agent Backend - FastAPI
-Agentic travel booking assistant + real TravelAI hybrid search over RDS SQL Server 2025.
+ReefShark Adventures - FastAPI backend.
 
-Serving model (matches the original Flask app contract):
+Main-page search is powered entirely by plain TEXT SEARCH over the TravelHub
+database on RDS SQL Server (Destinations, Flights, Hotels, Activities). No
+semantic search, no TravelAI dependency.
+
+Serving model (matches the original app contract):
   - Everything is served under /app on port 8081, behind the nginx `/app` -> :8081 proxy.
-  - API routes are exposed under /app/api/... (the FastAPI `app` is mounted at /app).
+  - API routes are exposed under /app/api/... (matched before the static mount).
   - The Next.js static export (frontend/out) is served at /app for the UI.
 """
 import os
@@ -16,12 +19,11 @@ from pydantic import BaseModel
 from typing import Optional
 
 from agent import TravelAgent
-from mock_data import flights, hotels, activities, rental_cars
+from mock_data import rental_cars
 
-app = FastAPI(title="TravelAI Agent", version="2.0.0")
+app = FastAPI(title="ReefShark Adventures", version="3.0.0")
 
-# NOTE: open CORS for simple lab testing (frontend served from the EC2 public IP).
-# Tighten allow_origins for anything beyond a throwaway lab.
+# NOTE: open CORS for simple lab testing. Tighten allow_origins beyond a lab.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,12 +42,12 @@ class ChatMessage(BaseModel):
 
 @app.get("/app/status")
 def root():
-    return {"status": "TravelAI Agent is running"}
+    return {"status": "ReefShark Adventures is running"}
 
 
 @app.get("/app/api/health")
 def health():
-    """DB connectivity + embedding coverage check."""
+    """DB connectivity check (TravelHub)."""
     try:
         import db
         return db.health()
@@ -116,117 +118,63 @@ def api_remediation():
         return {"steps": [], "error": str(e)}
 
 
-# Static metadata for the 4 strategy cards (merged with live latency/count).
-_STRATEGY_META = {
-    "sql":      {"name": "SQL Baseline (WHERE)", "color": "slate",
-                 "desc": "Pure WHERE clause on persisted JSON climate column"},
-    "freetext": {"name": "Lexical (FREETEXT)", "color": "amber",
-                 "desc": "SQL Server Full-Text Search with word stemming"},
-    "semantic": {"name": "Semantic (VECTOR_DISTANCE)", "color": "purple",
-                 "desc": "Cosine similarity via Bedrock Titan V2 1024-dim embeddings"},
-    "hybrid":   {"name": "Hybrid (FTS + RAG)", "color": "emerald",
-                 "desc": "FREETEXT + vector + DocumentChunks retrieval, RRF fusion"},
-}
-
-
+# ---------------------------------------------------------------------------
+# Search tabs - all four backed by TravelHub text search.
+# ---------------------------------------------------------------------------
 @app.get("/app/api/search")
-def api_search(q: str = Query(..., min_length=1), topk: int = 5):
-    """
-    Run all four TravelAI retrieval strategies against RDS SQL Server, returning
-    per-strategy latency + counts, the hybrid result set, and RAG document chunks.
-    """
+def api_search(q: str = "", topk: int = 8):
+    """Destinations tab: text search over enriched TravelHub.Destinations."""
     import db
-
-    strategies = {}
-    results = []
-    rag_chunks = []
-    errors = {}
-
-    runners = [
-        ("sql", db.search_sql),
-        ("freetext", db.search_freetext),
-        ("semantic", db.search_vector),
-        ("hybrid", db.search_hybrid),
-    ]
-
-    t_total = time.perf_counter()
-    for key, fn in runners:
-        meta = _STRATEGY_META[key]
-        try:
-            first, extra, ms = fn(q, topk)
-            strategies[key] = {"name": meta["name"], "color": meta["color"],
-                               "desc": meta["desc"], "latency": ms, "count": len(first)}
-            if key == "hybrid":
-                results = [db._norm_result(r) for r in first]
-                if extra:
-                    rag_chunks = [db._norm_chunk(r) for r in extra[0]]
-        except Exception as e:
-            errors[key] = str(e)
-            strategies[key] = {"name": meta["name"], "color": meta["color"],
-                               "desc": meta["desc"], "latency": None, "count": 0}
-    total_ms = int((time.perf_counter() - t_total) * 1000)
-
-    # Fallback: if hybrid failed, surface whichever strategy returned rows.
-    if not results:
-        for key, fn in runners:
-            try:
-                first, _, _ = fn(q, topk)
-                if first:
-                    results = [db._norm_result(r) for r in first]
-                    break
-            except Exception:
-                continue
-
-    winner = "hybrid" if strategies.get("hybrid", {}).get("count") else None
-
-    return {
-        "query": q,
-        "strategies": strategies,
-        "winner": winner,
-        "results": results,
-        "ragChunks": rag_chunks,
-        "total_latency_ms": total_ms,
-        "errors": errors,
-    }
-
-
-@app.post("/app/api/chat")
-def chat(msg: ChatMessage):
-    """Agentic chat endpoint - the AI guides the user through travel planning."""
-    return agent.process_message(msg.message, msg.session_id)
+    try:
+        results, ms = db.search_destinations(q, topk)
+        return {"query": q, "results": results, "count": len(results),
+                "latency_ms": ms, "source": "TravelHub.Destinations"}
+    except Exception as e:
+        return {"query": q, "results": [], "count": 0, "error": str(e)}
 
 
 @app.get("/app/api/flights")
-def search_flights(origin: str = "", destination: str = "", topk: int = 8):
-    """Live flights from TravelHub."""
+def search_flights(origin: str = "", destination: str = "",
+                   date: str = "", return_date: str = "", topk: int = 8):
+    """Flights tab: text search over TravelHub.Flights. Round-trip when return_date is set."""
     import db
     try:
-        results, ms = db.th_flights(origin, destination, topk)
-        return {"results": results, "count": len(results), "latency_ms": ms, "source": "TravelHub.Flights"}
+        results, ms = db.th_flights(origin, destination, date, return_date, topk)
+        return {"results": results, "count": len(results),
+                "latency_ms": ms, "source": "TravelHub.Flights"}
     except Exception as e:
         return {"results": [], "count": 0, "error": str(e)}
 
 
 @app.get("/app/api/hotels")
-def search_hotels(destination: str = "", topk: int = 8):
-    """Live hotels from TravelHub."""
+def search_hotels(destination: str = "", checkin: str = "",
+                  checkout: str = "", topk: int = 8):
+    """Hotels tab: text search over TravelHub.Hotels."""
     import db
     try:
-        results, ms = db.th_hotels(destination, topk)
-        return {"results": results, "count": len(results), "latency_ms": ms, "source": "TravelHub.Hotels"}
+        results, ms = db.th_hotels(destination, checkin, checkout, topk)
+        return {"results": results, "count": len(results),
+                "latency_ms": ms, "source": "TravelHub.Hotels"}
     except Exception as e:
         return {"results": [], "count": 0, "error": str(e)}
 
 
 @app.get("/app/api/activities")
 def search_activities(q: str = "", topk: int = 8):
-    """Live activities from TravelHub."""
+    """Activities tab: text search over TravelHub.Activities."""
     import db
     try:
         results, ms = db.th_activities(q, topk)
-        return {"results": results, "count": len(results), "latency_ms": ms, "source": "TravelHub.Activities"}
+        return {"results": results, "count": len(results),
+                "latency_ms": ms, "source": "TravelHub.Activities"}
     except Exception as e:
         return {"results": [], "count": 0, "error": str(e)}
+
+
+@app.post("/app/api/chat")
+def chat(msg: ChatMessage):
+    """Agentic chat endpoint - the AI guides the user through travel planning."""
+    return agent.process_message(msg.message, msg.session_id)
 
 
 @app.get("/app/api/cars")
@@ -238,16 +186,10 @@ def search_cars(location: str = "Los Angeles", pickup_date: str = "2024-12-01"):
 
 
 # ---------------------------------------------------------------------------
-# Serve under /app (same external contract as the original Flask app), on :8081.
-#   - All API routes above are registered as real routes at /app/api/... and are
-#     matched BEFORE the StaticFiles mount below (Starlette checks explicit
-#     routes before a Mount), so the API always wins over the SPA catch-all.
-#   - The Next.js static export (frontend/out) is mounted LAST at /app and serves
-#     the UI + client-side routes (html=True resolves /app/ and /app/search/).
+# Serve the Next.js static export under /app (mounted last so API wins).
 # ---------------------------------------------------------------------------
 from starlette.responses import JSONResponse
 
-# Path to the built Next.js static export (frontend/out). Overridable for local dev.
 _FRONTEND_OUT = os.getenv(
     "FRONTEND_OUT",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "out")),
@@ -256,10 +198,9 @@ _FRONTEND_OUT = os.getenv(
 
 @app.get("/")
 def _root_redirect():
-    return JSONResponse({"status": "ReefShark Adventures — open /app/"})
+    return JSONResponse({"status": "ReefShark Adventures - open /app/"})
 
 
-# Mount the SPA last so it acts as the fallback for any non-API /app path.
 if os.path.isdir(_FRONTEND_OUT):
     app.mount("/app", StaticFiles(directory=_FRONTEND_OUT, html=True), name="ui")
 
