@@ -49,6 +49,34 @@ else
     python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/travelhub/03_create_bad_procedures.sql
 fi
 
+# Enrich TravelHub for the ReefShark app search (idempotent, additive).
+# Adds DisplayName/Tags, hotel Amenities, varied Activities, and real flight
+# city names so the main-page text search (Destinations/Flights/Hotels/
+# Activities) returns real, travel-app-like results. Safe to re-run.
+echo "Checking TravelHub app-search enrichment..."
+ENRICHED=$(python3 -c "
+import pymssql
+try:
+    conn = pymssql.connect(server='$DB_HOST', user='$DB_USER', password='$DB_PASS', port=$DB_PORT, database='TravelHub')
+    cursor = conn.cursor()
+    cursor.execute(\"SELECT CASE WHEN COL_LENGTH('dbo.Destinations','Tags') IS NOT NULL AND EXISTS (SELECT 1 FROM Destinations WHERE Tags IS NOT NULL) THEN 'yes' ELSE 'no' END\")
+    print(cursor.fetchone()[0])
+    conn.close()
+except:
+    print('no')
+" 2>/dev/null)
+
+if [ "$ENRICHED" = "yes" ]; then
+    echo "TravelHub already enriched for app search. Skipping..."
+else
+    echo "Enriching TravelHub for app search (05_enrich_for_app_search.sql)..."
+    python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/travelhub/05_enrich_for_app_search.sql
+fi
+
+# Create/refresh the app search stored procedures (idempotent CREATE OR ALTER).
+echo "Creating app search stored procedures (06_app_search_procedures.sql)..."
+python3 $SCRIPT_DIR/run_sql_file.py $SCRIPT_DIR/load_generator/travelhub/06_app_search_procedures.sql
+
 # Create workload script
 cat > /tmp/travelapp_workload.py << 'PYEOF'
 import pymssql
