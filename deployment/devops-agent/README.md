@@ -1,6 +1,6 @@
 # AWS DevOps Agent Integration
 
-Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent.html) for managed, zero-code investigations through a web interface. This is an alternative to invoking the agents directly on AgentCore Runtime (`agentcore invoke`) — the same health and query capabilities, surfaced in a managed web app instead of the CLI.
+Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent.html) for managed, zero-code investigations through a web interface. This is an alternative to invoking the agents directly on AgentCore Runtime (`agentcore invoke`): the same health and query capabilities, surfaced in a managed web app instead of the CLI.
 
 ## How It Works
 
@@ -21,7 +21,7 @@ Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.
 └──────────────────┘     └──────────────────┘
 ```
 
-1. Your existing tools (health + query) are packaged as Lambda functions
+1. Your existing tools (health and query) are packaged as Lambda functions
 2. AgentCore Gateway exposes them as MCP endpoints with AWS IAM (SigV4) authentication
 3. DevOps Agent connects to the Gateway and discovers all 27 tools
 4. An investigation skill teaches the agent your structured troubleshooting methodology
@@ -29,12 +29,12 @@ Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.
 
 ## Deploy with CloudFormation (recommended)
 
-A single stack — [`dbops-devops-agent.yaml`](dbops-devops-agent.yaml) — provisions
-the whole integration (Lambdas, layer, gateway + targets, agent space, web app, MCP
-service, tool allowlist, skill/agent-instruction assets, webhook secret, executor
-Lambda, and alarms). The only manual step is minting the webhook URL+secret in the
-console. **[SETUP.md](SETUP.md) is the authoritative walkthrough** — the commands
-below are a summary.
+A single stack, [`dbops-devops-agent.yaml`](dbops-devops-agent.yaml), provisions
+the whole integration (Lambdas, layer, gateway and targets, agent space, web app, MCP
+service, tool allowlist, skill and agent-instruction assets, webhook secret, executor
+Lambda, and alarms). The only manual step is minting the webhook URL and secret in the
+console. **[SETUP.md](SETUP.md) has the full walkthrough;** the commands below are a
+summary.
 
 ```bash
 cd deployment/devops-agent
@@ -54,13 +54,13 @@ aws cloudformation deploy --template-file packaged.yaml --stack-name dbops-devop
 ```
 
 > `--parameter-overrides` takes inline `Key=Value` pairs (not `file://`), so the `jq`
-> expression turns `parameters.json` into pairs. Keep it **last** on the command — it
+> expression turns `parameters.json` into pairs. Keep it **last** on the command; it
 > is greedy and swallows any flag after it.
 
 **Optional least-privilege deploy role:** deploy [`cfn-service-role.yaml`](cfn-service-role.yaml)
 first and add `--role-arn "$CFN_ROLE_ARN"` (before `--parameter-overrides`). It carries
-an enumerated, wildcard-free policy verified by an end-to-end deploy — suitable for
-customer-facing / AppSec-reviewed accounts.
+an enumerated, wildcard-free policy verified by an end-to-end deploy, suitable for
+customer-facing or AppSec-reviewed accounts.
 
 Then populate the webhook secret (SETUP.md Step 2) and verify. Teardown is a single
 `aws cloudformation delete-stack --stack-name dbops-devops-agent`.
@@ -70,7 +70,7 @@ Then populate the webhook secret (SETUP.md Step 2) and verify. Teardown is a sin
 # Scripted path (alternative)
 
 > **Skip this entire section if you deployed with CloudFormation above.** The steps
-> below are the manual, script-driven alternative — they produce the *same* resources.
+> below are the manual, script-driven alternative that produces the *same* resources.
 > Use one path or the other, not both.
 
 ## Prerequisites (scripted path)
@@ -93,10 +93,10 @@ chmod +x deploy_gateway.sh
 
 This creates `gateway_config.json` with the Gateway URL.
 
-> **Note — health tools are optional.** The gateway deploys both the
+> **Note: health tools are optional.** The gateway deploys both the
 > `dbops-health-tools` and `dbops-query-tools` Lambda targets. The health tools are
 > optional: the investigation skill (Step 4) has the DevOps Agent read health
-> signals — CPU utilization, memory, connections, load, and so on — through its
+> signals (CPU utilization, memory, connections, load, and so on) through its
 > own native CloudWatch and Performance Insights APIs rather than these MCP tools.
 > To deploy the SQL-level query tools only, run `./deploy_gateway.sh --query-only`.
 
@@ -112,7 +112,7 @@ This creates `gateway_config.json` with the Gateway URL.
 python3 agent_gateway.py
 ```
 
-Ask: "What is the current CPU utilization?" — confirms tools work end-to-end via MCP.
+Ask "What is the current CPU utilization?" to confirm tools work end-to-end via MCP.
 
 ## Step 2: Create the Agent Space
 
@@ -140,14 +140,15 @@ service registration and tool allowlist.
 
 ## Step 4: Upload Investigation Skill
 
-The skill teaches DevOps Agent a structured troubleshooting methodology: triage → diagnose → drill down → correlate → recommend.
+The skill teaches DevOps Agent a structured troubleshooting methodology: triage,
+diagnose, drill down, correlate, recommend.
 
 1. Zip the skill:
    ```bash
    cd skills && zip -r ../sql-server-investigation.zip sql-server-investigation/ && cd ..
    ```
 2. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
-3. Click **sql-server-dbops** → **Operator access** → **Skills** → **Add skill** → **Upload skill**
+3. Click **sql-server-dbops**, then **Operator access**, **Skills**, **Add skill**, **Upload skill**
 4. Select `sql-server-investigation.zip`, set Agent Type to **Generic**, click **Upload**
 
 ### Add Agent Instructions (recommended)
@@ -157,23 +158,23 @@ When multiple skills are uploaded, a generic prompt like "high CPU" can be ambig
 tell the agent which skill to use for which scenario.
 
 1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
-2. Click **sql-server-dbops** → **Operator access** → **Agent instructions**
+2. Click **sql-server-dbops**, then **Operator access**, **Agent instructions**
 3. Paste the contents of [`AGENTS.md`](AGENTS.md) (Agent Type **Investigation / INCIDENT_RCA**) and save
 
 ## Step 5: Connect CloudWatch Alarms (event-driven investigations)
 
 Wire CloudWatch Alarms to DevOps Agent so that threshold breaches automatically
-start investigations — no human in the loop.
+start investigations, with no human in the loop.
 
-The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook**
+The flow: **CloudWatch Alarm to Lambda (direct invoke) to DevOps Agent Webhook**
 
-1. Generate a webhook in the DevOps Agent console (click sql-server-dbops → Capabilities → Webhooks → Add)
+1. Generate a webhook in the DevOps Agent console (click sql-server-dbops, then Capabilities, Webhooks, Add)
 2. Store the webhook URL and secret in Secrets Manager
 3. Deploy the webhook executor Lambda (`lambda/webhook/lambda_function.py`)
 4. Create CloudWatch alarms with the Lambda ARN as the alarm action
 
-The webhook URL/secret (step 1 above) can only be minted in the console — there is no
-create-webhook API. Everything else here you create with the AWS CLI.
+The webhook URL and secret (step 1 above) can only be minted in the console; there is
+no create-webhook API. Everything else here you create with the AWS CLI.
 
 ---
 
@@ -186,7 +187,7 @@ Open the DevOps Agent Web App from the
 (select **sql-server-dbops**), or fetch the direct URL with
 `aws devops-agent get-agent-space --agent-space-id <id> --query 'agentSpace.operatorApp.operatorAppUrl'`.
 
-**Manual** — start an investigation:
+**Manual:** start an investigation:
 
 ```
 "Give me a complete database health report"
@@ -194,12 +195,14 @@ Open the DevOps Agent Web App from the
 "Are there any blocking sessions affecting performance?"
 ```
 
-**Alarm-triggered** — When a CloudWatch alarm fires (e.g. CPU > 80%), the webhook
+**Alarm-triggered:** when a CloudWatch alarm fires (e.g. CPU > 80%), the webhook
 executor Lambda automatically triggers a DevOps Agent investigation. The agent uses
 the investigation skill, reads CloudWatch/Database Insights via its IAM role, and
 calls your MCP tools through the Gateway for SQL-level detail.
 
-The agent follows the skill methodology — triaging health, identifying bottleneck type via wait events, drilling into the specific issue, and producing severity-rated recommendations.
+The agent follows the skill methodology: triaging health, identifying bottleneck type
+via wait events, drilling into the specific issue, and producing severity-rated
+recommendations.
 
 ## Tool Reference
 
@@ -208,7 +211,7 @@ The agent follows the skill methodology — triaging health, identifying bottlen
 | `dbops-health-tools` (14) | CPU, memory, connections, load, wait events, IOPS, latency, storage | CloudWatch, Database Insights |
 | `dbops-query-tools` (13) | Slow queries, blocking, Query Store, indexes, execution plans | SQL Server DMVs |
 
-Tool names in DevOps Agent use the format: `<target>___<tool>` (triple underscore).
+Tool names in DevOps Agent use the format `<target>___<tool>` (triple underscore).
 
 > **Note:** `dbops-health-tools` overlaps with metrics the DevOps Agent can read
 > natively (CloudWatch, Performance Insights / Database Insights). The
@@ -219,7 +222,7 @@ Tool names in DevOps Agent use the format: `<target>___<tool>` (triple underscor
 
 ## Cleanup
 
-**CloudFormation deploy:** one command tears down everything —
+**CloudFormation deploy:** one command tears down everything.
 
 ```bash
 aws cloudformation delete-stack --stack-name dbops-devops-agent --region "$AWS_REGION"
@@ -255,7 +258,7 @@ aws iam delete-role --role-name DevOpsAgentRole-WebappAdmin
 ./deploy_gateway.sh --cleanup
 
 # 6. (Optional) Remove the gateway-specific grants added to the SHARED execution role.
-#    Do NOT delete AgentCoreDBOpsRole itself — the 5 AgentCore agents use it.
+#    Do NOT delete AgentCoreDBOpsRole itself, the 5 AgentCore agents use it.
 aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name InvokeDbopsGateway 2>/dev/null || true
 aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name GatewayInvokeDbopsLambdas 2>/dev/null || true
 ```

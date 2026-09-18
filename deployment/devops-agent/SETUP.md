@@ -10,66 +10,66 @@ except one console-only step. The older imperative runbook is preserved as a
 
 ## What the stack provisions
 
-One `aws cloudformation deploy` creates the full integration — 24 resources across
+One `aws cloudformation deploy` creates the full integration: 24 resources across
 six areas. All resource names are fixed (`dbops-*`, `sql-server-dbops`,
 `AgentCoreDBOpsRole`) so re-deploys and teardown are predictable.
 
-### Compute — the diagnostic tools
+### Compute (the diagnostic tools)
 
-- **pymssql Lambda layer** — bundles the `pymssql` driver so the query Lambda can
+- **pymssql Lambda layer**: bundles the `pymssql` driver so the query Lambda can
   open a live T-SQL connection to the RDS instance.
-- **`dbops-health-tools`** (VPC Lambda, 14 tools) — reads CPU, memory, connections,
+- **`dbops-health-tools`** (VPC Lambda, 14 tools): reads CPU, memory, connections,
   IOPS, latency, storage, and wait/top-SQL signals from CloudWatch and Performance
   Insights.
-- **`dbops-query-tools`** (VPC Lambda, 13 tools) — SQL-level diagnostics over a
-  direct DB connection: blocking chains, Query Store, slow queries, plan cache,
-  index usage/suggestions.
-- **`dbops-webhook-executor`** (non-VPC Lambda) — the bridge that receives a
+- **`dbops-query-tools`** (VPC Lambda, 13 tools): SQL-level diagnostics over a
+  direct DB connection, covering blocking chains, Query Store, slow queries, plan
+  cache, and index usage/suggestions.
+- **`dbops-webhook-executor`** (non-VPC Lambda): the bridge that receives a
   CloudWatch alarm and POSTs an HMAC-signed request to the DevOps Agent webhook to
   start an investigation.
-- **Invoke permissions** — resource policies allowing the AgentCore gateway to
+- **Invoke permissions**: resource policies allowing the AgentCore gateway to
   invoke the tool Lambdas and CloudWatch alarms to invoke the webhook executor.
 
 ### IAM
 
-- **Signing/execution role (`AgentCoreDBOpsRole`)** — one role, three hats: the tool
-  Lambdas' execution role, the gateway's role, and the SigV4 signing role for the
-  MCP service. Holds least-privilege read access to CloudWatch, Performance
-  Insights, RDS, the DB secret, SNS, and invoke rights on the gateway + tool Lambdas.
-- **Agent Space roles** — `DevOpsAgentRole-AgentSpace` (assumed by the service to
+- **Signing/execution role (`AgentCoreDBOpsRole`)**: one role, three hats. It is the
+  tool Lambdas' execution role, the gateway's role, and the SigV4 signing role for
+  the MCP service. It holds least-privilege read access to CloudWatch, Performance
+  Insights, RDS, the DB secret, SNS, and invoke rights on the gateway plus tool Lambdas.
+- **Agent Space roles**: `DevOpsAgentRole-AgentSpace` (assumed by the service to
   monitor the account) and `DevOpsAgentRole-WebappAdmin` (backs the operator web app).
 
 ### AgentCore MCP gateway
 
-- **`dbops-mcp-gateway`** — an MCP gateway with **AWS IAM / SigV4** inbound auth.
-- **Two gateway targets** — register the health and query Lambdas behind the gateway
+- **`dbops-mcp-gateway`**: an MCP gateway with **AWS IAM / SigV4** inbound auth.
+- **Two gateway targets**: register the health and query Lambdas behind the gateway
   with all **27 inline tool schemas**, so any MCP client discovers the tools.
 
-### DevOps Agent space + integration
+### DevOps Agent space and integration
 
 - **Agent space `sql-server-dbops`** with the **operator web app enabled** (IAM auth).
-- **AWS account association** (monitor) — lets the agent read your account via the
+- **AWS account association** (monitor): lets the agent read your account via the
   agent-space role.
-- **MCP service registration + 27-tool allowlist** — registers the gateway as a
+- **MCP service registration and 27-tool allowlist**: registers the gateway as a
   SigV4 MCP service and allowlists every tool for the agent to call.
 
 ### Assets (agent knowledge)
 
-- **`sql-server-investigation` skill** — the triage → diagnose → drill-down →
-  correlate → recommend methodology (SKILL.md + reference doc), inlined into the
+- **`sql-server-investigation` skill**: the triage, diagnose, drill-down, correlate,
+  and recommend methodology (SKILL.md plus a reference doc), inlined into the
   template and created via the Asset API.
-- **`agents_md` instructions** — always-applied directives telling the agent to use
+- **`agents_md` instructions**: always-applied directives telling the agent to use
   the SQL Server skill for RDS SQL Server investigations.
 
 ### Event-driven alarm plumbing
 
-- **Webhook secret** (`dbops-devops-agent-webhook`) — created as a container with
-  placeholder values; you populate it in Step 2.
-- **Three demo CloudWatch alarms** — `HighCPU`, `HighConnections`, `HighReadLatency`
+- **Webhook secret** (`dbops-devops-agent-webhook`): created as a container with
+  placeholder values that you populate in Step 2.
+- **Three demo CloudWatch alarms** (`HighCPU`, `HighConnections`, `HighReadLatency`)
   on the RDS instance, each wired to invoke the webhook executor so a breach
   auto-starts an investigation.
 
-**The one manual step:** minting the webhook URL + secret (below) is console-only —
+**The one manual step:** minting the webhook URL and secret (below) is console-only.
 CloudFormation cannot generate the HMAC key pair, so the stack creates the secret
 with placeholder values that you populate afterward.
 
@@ -79,16 +79,16 @@ with placeholder values that you populate afterward.
 
 ### Tooling
 
-- **AWS CLI v2** (any current version). The old v2.35 floor no longer applies — the
+- **AWS CLI v2** (any current version). The old v2.35 floor no longer applies. The
   `mcpserversigv4` service is now registered by CloudFormation, not the CLI.
-- **`jq`** — used in Step 1 to turn `parameters.json` into deploy parameters. If you
+- **`jq`**, used in Step 1 to turn `parameters.json` into deploy parameters. If you
   don't have it, Step 1 shows a `python3` fallback.
 
 ### Base infrastructure (deploy this first)
 
-This stack **references** an existing RDS SQL Server environment — it does not create
+This stack **references** an existing RDS SQL Server environment; it does not create
 one. Deploy [`templates/infrastructure.yaml`](../../templates/infrastructure.yaml)
-first (VPC, RDS SQL Server, secret, SNS); its outputs feed `parameters.json` below.
+first (VPC, RDS SQL Server, secret, SNS). Its outputs feed `parameters.json` below.
 
 ```bash
 aws cloudformation deploy \
@@ -99,7 +99,7 @@ aws cloudformation deploy \
 ### Artifact S3 bucket
 
 `cloudformation package` (Step 1) **uploads** the pymssql layer and the three Lambda
-code bundles into an S3 bucket and rewrites the template to point at them — you do
+code bundles into an S3 bucket and rewrites the template to point at them. You do
 **not** copy anything into the bucket yourself. You only need to supply the name of
 an existing bucket in the same region. Create one (or reuse any bucket you own):
 
@@ -116,9 +116,9 @@ aws s3api create-bucket --bucket "$YOUR_ARTIFACT_BUCKET" --region "$AWS_REGION" 
 ### Deploy permissions
 
 If you deploy as an admin (or any identity with the needed permissions), **skip
-this section** — no `--role-arn` is required.
+this section**. No `--role-arn` is required.
 
-**Optional — least-privilege deploy role.** Only if you want CloudFormation to use a
+**Optional: least-privilege deploy role.** Only if you want CloudFormation to use a
 scoped service role, deploy it first and export its ARN. If you skip this, leave
 `CFN_ROLE_ARN` unset (the deploy command below omits `--role-arn` automatically):
 
@@ -149,22 +149,22 @@ aws cloudformation describe-stacks --stack-name dbops --region "$AWS_REGION" \
 
 Copy [`parameters.example.json`](parameters.example.json) to `parameters.json` and
 fill in each `ParameterValue` from those outputs
-(`DBInstanceId`, `DBSecretId`→`DBSecretArn`, `SNSTopicName`, `SecurityGroupId`,
+(`DBInstanceId`, `DBSecretId` into `DBSecretArn`, `SNSTopicName`, `SecurityGroupId`,
 `Subnet1`, `Subnet2`):
 
 ```bash
 cp parameters.example.json parameters.json
-# edit parameters.json — replace the placeholders with your dbops outputs
+# edit parameters.json, replacing the placeholders with your dbops outputs
 ```
 
 ---
 
-## Step 1 — Package and deploy
+## Step 1: Package and deploy
 
 Run from the `deployment/devops-agent/` directory, with `AWS_REGION` and
 `YOUR_ARTIFACT_BUCKET` already exported (see [Artifact S3 bucket](#artifact-s3-bucket)).
-`package` uploads the Lambda/layer artifacts to that bucket and writes `packaged.yaml`;
-`deploy` then creates the stack from it.
+`package` uploads the Lambda/layer artifacts to that bucket and writes `packaged.yaml`,
+then `deploy` creates the stack from it.
 
 ```bash
 cd deployment/devops-agent    # from the repo root
@@ -191,22 +191,15 @@ its own line **above** `--parameter-overrides`:
   --parameter-overrides $(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
 ```
 
-> **Keep `--parameter-overrides` last, and pass `--role-arn` as a plain flag.**
-> Both `--parameter-overrides` and `--capabilities` are greedy — any token after
-> them gets swallowed. Don't wrap `--role-arn` in a `${VAR:+...}` shell conditional;
-> the nested quotes expand into one mangled `--role-arn arn:...` token that the CLI
-> misreads as a capability/override value.
-
-> **Why the `jq` wrapper?** Fill in your values once in `parameters.json` (copy it
-> from [`parameters.example.json`](parameters.example.json)). Unlike
+> **Why the `jq` wrapper?** Fill in your values once in `parameters.json`. Unlike
 > `create-stack --parameters`, `deploy --parameter-overrides` accepts only inline
-> `Key=Value` pairs — not `file://` — so the `jq` expression converts the JSON file
+> `Key=Value` pairs, not `file://`, so the `jq` expression converts the JSON file
 > into those pairs. No `jq`? Use the python equivalent:
 > `--parameter-overrides $(python3 -c "import json;print(' '.join(f\"{p['ParameterKey']}={p['ParameterValue']}\" for p in json.load(open('parameters.json'))))")`
 
 > **IAM propagation:** the MCP service registration depends on the signing role's
 > trust and invoke-gateway grant. If the deploy fails once on an authorization
-> error for `McpService`, re-run `deploy` — IAM is just catching up.
+> error for `McpService`, re-run `deploy`. IAM is just catching up.
 
 Read the outputs (gateway URL, agent space ID, webhook secret ARN):
 
@@ -215,14 +208,19 @@ aws cloudformation describe-stacks --stack-name dbops-devops-agent \
   --region "$AWS_REGION" --query 'Stacks[0].Outputs' --output table
 ```
 
+> **Troubleshooting the deploy command.** Keep `--parameter-overrides` last: it is
+> greedy and swallows any flag placed after it. Pass `--role-arn` as a plain flag,
+> not inside a `${VAR:+...}` shell conditional (the nested quotes expand into one
+> mangled `--role-arn arn:...` token that the CLI misreads).
+
 ---
 
-## Step 2 — Mint and store the webhook credentials (manual)
+## Step 2: Mint and store the webhook credentials (manual)
 
 This is the only step CloudFormation cannot do.
 
 1. Open the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
-2. Click **sql-server-dbops** → **Capabilities** → **Webhooks** → **Agent Space Webhook** → **Add**
+2. Click **sql-server-dbops**, then **Capabilities**, **Webhooks**, **Agent Space Webhook**, **Add**
 3. Copy the generated **Webhook URL** and **Secret Key**
 4. Write them into the secret the stack created:
 
@@ -233,12 +231,12 @@ aws secretsmanager put-secret-value \
   --region "$AWS_REGION"
 ```
 
-The alarms and executor Lambda are already wired; once the secret holds real
+The alarms and executor Lambda are already wired. Once the secret holds real
 values, alarm-triggered investigations work.
 
 ---
 
-## Step 3 — Verify
+## Step 3: Verify
 
 **Open the web app first.** Either use the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
 (pick **sql-server-dbops**), or get the direct URL:
@@ -260,9 +258,9 @@ aws cloudwatch set-alarm-state \
   --region "$AWS_REGION"
 ```
 
-Within seconds, check the DevOps Agent Web App — a new investigation should appear,
-triggered by the alarm. The agent will use the `sql-server-investigation` skill, read
-CloudWatch/Database Insights via its IAM role, and call your MCP tools through the
+Within seconds, check the DevOps Agent Web App. A new investigation should appear,
+triggered by the alarm. The agent uses the `sql-server-investigation` skill, reads
+CloudWatch/Database Insights via its IAM role, and calls your MCP tools through the
 Gateway when deeper SQL-level data is needed.
 
 > The three demo alarm thresholds are intentionally low so they trip quickly.
@@ -298,12 +296,12 @@ stack too if you created one.)
 The original per-step scripts remain for local development or when you want to run
 the gateway setup without CloudFormation:
 
-- [`deploy_gateway.sh`](deploy_gateway.sh) — publishes the layer, packages/creates
+- [`deploy_gateway.sh`](deploy_gateway.sh): publishes the layer, packages and creates
   the tool Lambdas, creates the gateway, and registers targets
-  (`--query-only` for query tools only; `--cleanup` to tear down)
-- [`setup_agent_space.sh`](setup_agent_space.sh) — agent space, account
+  (`--query-only` for query tools only, `--cleanup` to tear down)
+- [`setup_agent_space.sh`](setup_agent_space.sh): agent space, account
   association, web app, MCP service registration, and tool allowlist
-- [`setup_gateway.py`](setup_gateway.py) / [`agent_gateway.py`](agent_gateway.py) —
+- [`setup_gateway.py`](setup_gateway.py) and [`agent_gateway.py`](agent_gateway.py):
   the underlying gateway create/verify helpers
 
 These produce the same resources as the stack. Use one path or the other, not both.
