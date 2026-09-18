@@ -65,20 +65,25 @@ customer-facing / AppSec-reviewed accounts.
 Then populate the webhook secret (SETUP.md Step 2) and verify. Teardown is a single
 `aws cloudformation delete-stack --stack-name dbops-devops-agent`.
 
-The scripted, step-by-step path below remains as an alternative for local
-development or non-CloudFormation setups.
+---
+
+# Scripted path (alternative)
+
+> **Skip this entire section if you deployed with CloudFormation above.** The steps
+> below are the manual, script-driven alternative — they produce the *same* resources.
+> Use one path or the other, not both.
 
 ## Prerequisites (scripted path)
 
-- `deployment/agentcore/deploy.sh` completed (5 agents running on AgentCore Runtime)
-- `.env` sourced with all environment variables
-- Python 3.12+
-- `bedrock-agentcore-starter-toolkit` installed
+- A reachable RDS SQL Server environment (e.g. from `templates/infrastructure.yaml`)
+- `.env` sourced with all environment variables (region, account, `AGENTCORE_ROLE_ARN`,
+  DB instance/secret, SNS topic, subnets, security group)
+- Python 3.12+ and `bedrock-agentcore-starter-toolkit` installed
 
 ## Step 1: Deploy the Gateway
 
-This packages your health and query tools as Lambda functions, creates the
-authorizer, and registers everything with AgentCore Gateway.
+This packages your health and query tools as Lambda functions, creates the gateway
+(AWS IAM / SigV4 auth), and registers both Lambda targets with AgentCore Gateway.
 
 ```bash
 cd deployment/devops-agent
@@ -167,13 +172,21 @@ The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook
 3. Deploy the webhook executor Lambda (`lambda/webhook/lambda_function.py`)
 4. Create CloudWatch alarms with the Lambda ARN as the alarm action
 
-The webhook executor Lambda and the three alarms are created by the CloudFormation
-stack; only the webhook URL/secret must be minted in the console. See
-[SETUP.md](SETUP.md) Step 2 for the credential step.
+The webhook URL/secret (step 1 above) can only be minted in the console — there is no
+create-webhook API. Everything else here you create with the AWS CLI.
+
+---
+
+# Using the agent (either path)
 
 ## Use It
 
-**Manual** — Open the DevOps Agent Web App and start an investigation:
+Open the DevOps Agent Web App from the
+[DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
+(select **sql-server-dbops**), or fetch the direct URL with
+`aws devops-agent get-agent-space --agent-space-id <id> --query 'agentSpace.operatorApp.operatorAppUrl'`.
+
+**Manual** — start an investigation:
 
 ```
 "Give me a complete database health report"

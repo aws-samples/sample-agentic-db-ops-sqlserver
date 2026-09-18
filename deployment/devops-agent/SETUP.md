@@ -79,9 +79,22 @@ with placeholder values that you populate afterward.
 
 ### Tooling
 
-- **AWS CLI v2** (any current version) and **Python 3.12+** for the optional verify client.
-  The old v2.35 floor no longer applies — the `mcpserversigv4` service is now
-  registered by CloudFormation, not the CLI.
+- **AWS CLI v2** (any current version). The old v2.35 floor no longer applies — the
+  `mcpserversigv4` service is now registered by CloudFormation, not the CLI.
+- **`jq`** — used in Step 1 to turn `parameters.json` into deploy parameters. If you
+  don't have it, Step 1 shows a `python3` fallback.
+
+### Base infrastructure (deploy this first)
+
+This stack **references** an existing RDS SQL Server environment — it does not create
+one. Deploy [`templates/infrastructure.yaml`](../../templates/infrastructure.yaml)
+first (VPC, RDS SQL Server, secret, SNS); its outputs feed `parameters.json` below.
+
+```bash
+aws cloudformation deploy \
+  --template-file ../../templates/infrastructure.yaml \
+  --stack-name dbops --capabilities CAPABILITY_NAMED_IAM --region us-west-2
+```
 
 ### Artifact S3 bucket
 
@@ -124,18 +137,24 @@ export CFN_ROLE_ARN=$(aws cloudformation describe-stacks \
   --query "Stacks[0].Outputs[?OutputKey=='RoleArn'].OutputValue" --output text)
 ```
 
-### Existing DB environment
+### Build parameters.json from the base stack outputs
 
-The stack references (does not create) your RDS instance, its Secrets Manager
-secret, an SNS topic, and the VPC subnets/security group — all outputs of the
-`dbops` infrastructure stack ([`templates/infrastructure.yaml`](../../templates/infrastructure.yaml)).
-Copy [`parameters.example.json`](parameters.example.json) to `parameters.json` and
-fill in those values.
+The six parameters (RDS instance, DB secret ARN, SNS topic, security group, two
+subnets) all come from the `dbops` base stack. View them with:
 
 ```bash
-export AWS_REGION=us-west-2
+aws cloudformation describe-stacks --stack-name dbops --region "$AWS_REGION" \
+  --query 'Stacks[0].Outputs' --output table
+```
+
+Copy [`parameters.example.json`](parameters.example.json) to `parameters.json` and
+fill in each `ParameterValue` from those outputs
+(`DBInstanceId`, `DBSecretId`→`DBSecretArn`, `SNSTopicName`, `SecurityGroupId`,
+`Subnet1`, `Subnet2`):
+
+```bash
 cp parameters.example.json parameters.json
-# edit parameters.json with your dbops stack outputs
+# edit parameters.json — replace the placeholders with your dbops outputs
 ```
 
 ---
@@ -220,6 +239,14 @@ values, alarm-triggered investigations work.
 ---
 
 ## Step 3 — Verify
+
+**Open the web app first.** Either use the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
+(pick **sql-server-dbops**), or get the direct URL:
+
+```bash
+aws devops-agent get-agent-space --agent-space-id <AgentSpaceId from Step 1 outputs> \
+  --region "$AWS_REGION" --query 'agentSpace.operatorApp.operatorAppUrl' --output text
+```
 
 ### Test the integration (alarm-triggered)
 
