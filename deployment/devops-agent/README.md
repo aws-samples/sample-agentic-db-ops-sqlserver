@@ -57,10 +57,10 @@ aws cloudformation deploy --template-file packaged.yaml --stack-name dbops-devop
 > expression turns `parameters.json` into pairs. Keep it **last** on the command; it
 > is greedy and swallows any flag after it.
 
-**Optional least-privilege deploy role:** deploy [`cfn-service-role.yaml`](cfn-service-role.yaml)
-first and add `--role-arn "$CFN_ROLE_ARN"` (before `--parameter-overrides`). It carries
-an enumerated, wildcard-free policy verified by an end-to-end deploy, suitable for
-customer-facing or AppSec-reviewed accounts.
+**Optional least-privilege deploy role:** if you can't (or don't want to) deploy as an
+admin, deploy [`cfn-service-role.yaml`](cfn-service-role.yaml) first and add
+`--role-arn "$CFN_ROLE_ARN"` (before `--parameter-overrides`). It grants only the
+specific actions this stack needs.
 
 Then populate the webhook secret (SETUP.md Step 2) and verify. Teardown is a single
 `aws cloudformation delete-stack --stack-name dbops-devops-agent`.
