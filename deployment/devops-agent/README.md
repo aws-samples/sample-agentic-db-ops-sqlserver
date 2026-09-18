@@ -28,15 +28,15 @@ webhook credentials, must be done by hand in the console.
 └──────────────────┘     └──────────────────┘
 ```
 
-1. Your existing tools (health and query) are packaged as Lambda functions
+1. Your SQL-level query tools are packaged as a Lambda function
 2. AgentCore Gateway exposes them as MCP endpoints with AWS IAM (SigV4) authentication
-3. DevOps Agent connects to the Gateway and discovers all 27 tools
+3. DevOps Agent connects to the Gateway and discovers all 13 tools
 4. An investigation skill teaches the agent your structured troubleshooting methodology
 5. CloudWatch Alarms invoke a webhook executor Lambda that triggers investigations automatically
 
 ## What the stack provisions
 
-One `aws cloudformation deploy` creates the integration: 24 resources across six
+One `aws cloudformation deploy` creates the integration: 21 resources across six
 areas. All resource names are fixed (`dbops-*`, `sql-server-dbops`,
 `AgentCoreDBOpsRole`) so re-deploys and teardown are predictable.
 
@@ -44,12 +44,10 @@ areas. All resource names are fixed (`dbops-*`, `sql-server-dbops`,
 
 - **pymssql Lambda layer**: bundles the `pymssql` driver so the query Lambda can
   open a live T-SQL connection to the RDS instance.
-- **`dbops-health-tools`** (VPC Lambda, 14 tools): reads CPU, memory, connections,
-  IOPS, latency, storage, and wait/top-SQL signals from CloudWatch and Performance
-  Insights.
 - **`dbops-query-tools`** (VPC Lambda, 13 tools): SQL-level diagnostics over a
   direct DB connection, covering blocking chains, Query Store, slow queries, plan
-  cache, and index usage/suggestions.
+  cache, and index usage/suggestions. (Host metrics such as CPU, memory, and
+  latency are read by the DevOps Agent natively, so no health-tool Lambda is needed.)
 - **`dbops-webhook-executor`** (non-VPC Lambda): the bridge that receives a
   CloudWatch alarm and POSTs an HMAC-signed request to the DevOps Agent webhook to
   start an investigation.
@@ -68,15 +66,15 @@ areas. All resource names are fixed (`dbops-*`, `sql-server-dbops`,
 ### AgentCore MCP gateway
 
 - **`dbops-mcp-gateway`**: an MCP gateway with **AWS IAM / SigV4** inbound auth.
-- **Two gateway targets**: register the health and query Lambdas behind the gateway
-  with all **27 inline tool schemas**, so any MCP client discovers the tools.
+- **Gateway target**: registers the query Lambda behind the gateway with all
+  **13 inline tool schemas**, so any MCP client discovers the tools.
 
 ### DevOps Agent space and integration
 
 - **Agent space `sql-server-dbops`** with the **operator web app enabled** (IAM auth).
 - **AWS account association** (monitor): lets the agent read your account via the
   agent-space role.
-- **MCP service registration and 27-tool allowlist**: registers the gateway as a
+- **MCP service registration and 13-tool allowlist**: registers the gateway as a
   SigV4 MCP service and allowlists every tool for the agent to call.
 
 ### Assets (agent knowledge)
@@ -286,17 +284,15 @@ Are there any blocking sessions affecting performance?
 
 | Gateway Target | Tools | Data Sources |
 |---------------|-------|-------------|
-| `dbops-health-tools` (14) | CPU, memory, connections, load, wait events, IOPS, latency, storage | CloudWatch, Database Insights |
 | `dbops-query-tools` (13) | Slow queries, blocking, Query Store, indexes, execution plans | SQL Server DMVs |
 
 Tool names in DevOps Agent use the format `<target>___<tool>` (triple underscore).
 
-> **Note:** `dbops-health-tools` overlaps with metrics the DevOps Agent can read
-> natively (CloudWatch, Performance Insights / Database Insights). The
-> `sql-server-investigation` skill deliberately prefers the agent's native API
-> access for triage and uses these health tools only as a fallback, reserving the
-> MCP/Lambda path for the SQL-level detail in `dbops-query-tools`. See the skill's
-> "Data Source Boundaries" section for the rationale.
+> **Note:** the stack deploys only the SQL-level query tools. Host metrics (CPU,
+> memory, connections, IOPS, latency, storage) are read by the DevOps Agent natively
+> through CloudWatch and Performance Insights / Database Insights, so no health-tool
+> Lambda is deployed. The `sql-server-investigation` skill uses those native APIs for
+> triage and the MCP/Lambda tools for the SQL-level detail the agent cannot reach.
 
 ## Cleanup
 

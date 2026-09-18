@@ -120,9 +120,7 @@ Resources:
             Action:
             - lambda:InvokeFunction
             Resource:
-            - Fn::Sub: 
-                arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:dbops-health-tools
-            - Fn::Sub: 
+            - Fn::Sub:
                 arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:dbops-query-tools
   InvokeGatewayPolicy:
     Type: AWS::IAM::Policy
@@ -204,37 +202,6 @@ Resources:
       CompatibleRuntimes:
       - python3.12
       Content: ./pymssql-layer-3.12.zip
-  HealthToolsFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: dbops-health-tools
-      Runtime: python3.12
-      Handler: lambda_function.lambda_handler
-      Role:
-        Fn::GetAtt:
-        - SigningRole
-        - Arn
-      Code: ./lambda/health
-      Layers:
-      - Ref: PymssqlLayer
-      Timeout: 60
-      MemorySize: 256
-      VpcConfig:
-        SecurityGroupIds:
-        - Ref: SecurityGroupId
-        SubnetIds:
-        - Ref: Subnet1
-        - Ref: Subnet2
-      Environment:
-        Variables:
-          DB_INSTANCE_ID:
-            Ref: DBInstanceId
-          DB_SECRET_ID:
-            Ref: DBSecretArn
-          AWS_REGION_NAME:
-            Ref: AWS::Region
-          SNS_TOPIC_NAME:
-            Ref: SnsTopicName
   QueryToolsFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -266,13 +233,6 @@ Resources:
             Ref: AWS::Region
           SNS_TOPIC_NAME:
             Ref: SnsTopicName
-  HealthToolsGatewayPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName:
-        Ref: HealthToolsFunction
-      Action: lambda:InvokeFunction
-      Principal: bedrock-agentcore.amazonaws.com
   QueryToolsGatewayPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -392,154 +352,6 @@ Resources:
       ProtocolConfiguration:
         Mcp:
           SearchType: SEMANTIC
-  HealthToolsTarget:
-    Type: AWS::BedrockAgentCore::GatewayTarget
-    DependsOn: HealthToolsGatewayPermission
-    Properties:
-      Name: dbops-health-tools
-      GatewayIdentifier:
-        Fn::GetAtt:
-        - McpGateway
-        - GatewayIdentifier
-      CredentialProviderConfigurations:
-      - CredentialProviderType: GATEWAY_IAM_ROLE
-      TargetConfiguration:
-        Mcp:
-          Lambda:
-            LambdaArn:
-              Fn::GetAtt:
-              - HealthToolsFunction
-              - Arn
-            ToolSchema:
-              InlinePayload:
-              - Name: get_cpu_utilization
-                Description: Get CPU utilization timeline from CloudWatch
-                InputSchema:
-                  Type: object
-                  Properties:
-                    minutes_back:
-                      Type: integer
-                      Description: Lookback window in minutes (default 1440)
-              - Name: get_database_load
-                Description: Get database load (Active Average Sessions) from 
-                  Performance Insights
-                InputSchema:
-                  Type: object
-                  Properties:
-                    hours_back:
-                      Type: integer
-                      Description: Lookback window in hours (default 24)
-              - Name: get_extended_database_load
-                Description: Get extended database load with wait event 
-                  breakdown
-                InputSchema:
-                  Type: object
-                  Properties:
-                    hours_back:
-                      Type: integer
-                      Description: Lookback window in hours (default 24)
-              - Name: get_database_connections
-                Description: Get current database connection count from 
-                  CloudWatch
-                InputSchema:
-                  Type: object
-                  Properties:
-                    minutes_back:
-                      Type: integer
-                      Description: Lookback window in minutes (default 1440)
-              - Name: get_freeable_memory
-                Description: Get freeable memory from CloudWatch
-                InputSchema:
-                  Type: object
-                  Properties:
-                    minutes_back:
-                      Type: integer
-                      Description: Lookback window in minutes (default 1440)
-              - Name: get_free_storage
-                Description: Get free storage space from CloudWatch
-                InputSchema:
-                  Type: object
-                  Properties:
-                    minutes_back:
-                      Type: integer
-                      Description: Lookback window in minutes (default 1440)
-              - Name: get_iops
-                Description: Get read/write IOPS from CloudWatch
-                InputSchema:
-                  Type: object
-                  Properties:
-                    minutes_back:
-                      Type: integer
-                      Description: Lookback window in minutes (default 1440)
-              - Name: get_read_write_latency
-                Description: Get read/write latency from CloudWatch
-                InputSchema:
-                  Type: object
-                  Properties:
-                    minutes_back:
-                      Type: integer
-                      Description: Lookback window in minutes (default 1440)
-              - Name: get_network_throughput
-                Description: Get network receive/transmit throughput from 
-                  CloudWatch
-                InputSchema:
-                  Type: object
-                  Properties:
-                    minutes_back:
-                      Type: integer
-                      Description: Lookback window in minutes (default 1440)
-              - Name: get_wait_events
-                Description: Get top wait events from Performance Insights
-                InputSchema:
-                  Type: object
-                  Properties:
-                    hours_back:
-                      Type: integer
-                      Description: Lookback window in hours (default 1)
-              - Name: get_top_sql
-                Description: Get top SQL statements by load from Performance 
-                  Insights
-                InputSchema:
-                  Type: object
-                  Properties:
-                    hours_back:
-                      Type: integer
-                      Description: Lookback window in hours (default 1)
-              - Name: get_users
-                Description: Get top database users by load from Performance 
-                  Insights
-                InputSchema:
-                  Type: object
-                  Properties:
-                    hours_back:
-                      Type: integer
-                      Description: Lookback window in hours (default 1)
-              - Name: get_applications
-                Description: Get top applications by load from Performance 
-                  Insights
-                InputSchema:
-                  Type: object
-                  Properties:
-                    hours_back:
-                      Type: integer
-                      Description: Lookback window in hours (default 1)
-              - Name: send_email_notification
-                Description: Send an alert notification via SNS
-                InputSchema:
-                  Type: object
-                  Properties:
-                    subject:
-                      Type: string
-                      Description: Email subject
-                    message:
-                      Type: string
-                      Description: Email body
-                    severity:
-                      Type: string
-                      Description: INFO, WARNING, or CRITICAL
-                  Required:
-                  - subject
-                  - message
   QueryToolsTarget:
     Type: AWS::BedrockAgentCore::GatewayTarget
     DependsOn: QueryToolsGatewayPermission
@@ -732,7 +544,6 @@ Resources:
   McpToolAssociation:
     Type: AWS::DevOpsAgent::Association
     DependsOn:
-    - HealthToolsTarget
     - QueryToolsTarget
     Properties:
       AgentSpaceId:
@@ -746,20 +557,6 @@ Resources:
       Configuration:
         MCPServerSigV4:
           Tools:
-          - dbops-health-tools___get_applications
-          - dbops-health-tools___get_cpu_utilization
-          - dbops-health-tools___get_database_connections
-          - dbops-health-tools___get_database_load
-          - dbops-health-tools___get_extended_database_load
-          - dbops-health-tools___get_free_storage
-          - dbops-health-tools___get_freeable_memory
-          - dbops-health-tools___get_iops
-          - dbops-health-tools___get_network_throughput
-          - dbops-health-tools___get_read_write_latency
-          - dbops-health-tools___get_top_sql
-          - dbops-health-tools___get_users
-          - dbops-health-tools___get_wait_events
-          - dbops-health-tools___send_email_notification
           - dbops-query-tools___check_query_store_enabled
           - dbops-query-tools___get_blocking_sessions
           - dbops-query-tools___get_expensive_queries_from_cache
