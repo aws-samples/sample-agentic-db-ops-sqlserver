@@ -1,0 +1,8 @@
+[
+  { "ParameterKey": "DBInstanceId",    "ParameterValue": "your-rds-instance-id" },
+  { "ParameterKey": "DBSecretArn",     "ParameterValue": "arn:aws:secretsmanager:us-west-2:123456789012:secret:your-db-secret-XXXXXX" },
+  { "ParameterKey": "SnsTopicName",    "ParameterValue": "your-sns-topic-name" },
+  { "ParameterKey": "SecurityGroupId", "ParameterValue": "sg-xxxxxxxxxxxxxxxxx" },
+  { "ParameterKey": "Subnet1",         "ParameterValue": "subnet-xxxxxxxxxxxxxxxxx" },
+  { "ParameterKey": "Subnet2",         "ParameterValue": "subnet-yyyyyyyyyyyyyyyyy" }
+]

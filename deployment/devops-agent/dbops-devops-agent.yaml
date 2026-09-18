@@ -1,0 +1,949 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: DevOps Agent setup for SQL Server DBOps — Lambdas, pymssql layer, 
+  AgentCore MCP gateway + targets, DevOps Agent space/service/association, skill
+  + agent-instruction assets, and alarm-driven webhook plumbing. Replaces the 
+  imperative SETUP.md runbook. Deploy with `aws cloudformation package` (uploads
+  Lambda/layer artifacts) then `deploy`. Step 16a (mint the webhook URL+secret 
+  in the console) remains a manual step.
+Parameters:
+  DBInstanceId:
+    Type: String
+    Description: RDS instance identifier (dbops stack output DBInstanceId)
+  DBSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for DB credentials (dbops stack output 
+      DBSecretId)
+  SnsTopicName:
+    Type: String
+    Description: SNS topic name for alert notifications (dbops stack output 
+      SNSTopicName)
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group for the tool Lambdas' VPC config
+  Subnet1:
+    Type: AWS::EC2::Subnet::Id
+    Description: First subnet for Lambda VPC config
+  Subnet2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Second subnet for Lambda VPC config
+  AgentSpaceName:
+    Type: String
+    Default: sql-server-dbops
+    Description: Name for the DevOps Agent Space
+  SigningRoleName:
+    Type: String
+    Default: AgentCoreDBOpsRole
+    Description: Name for the multi-purpose signing/execution role the stack 
+      creates
+Resources:
+  SigningRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Ref: SigningRoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - bedrock-agentcore.amazonaws.com
+            - lambda.amazonaws.com
+          Action: sts:AssumeRole
+        - Effect: Allow
+          Principal:
+            Service: aidevops.amazonaws.com
+          Action:
+          - sts:AssumeRole
+          - sts:TagSession
+          Condition:
+            StringEquals:
+              aws:SourceAccount:
+                Ref: AWS::AccountId
+      ManagedPolicyArns:
+      - Fn::Sub: 
+          arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+      - PolicyName: dbops-tool-permissions
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: PerformanceInsights
+            Effect: Allow
+            Action:
+            - pi:GetResourceMetrics
+            - pi:DescribeDimensionKeys
+            - pi:GetDimensionKeyDetails
+            Resource:
+              Fn::Sub: arn:aws:pi:*:${AWS::AccountId}:metrics/rds/*
+          - Sid: KMSDecryptForPI
+            Effect: Allow
+            Action:
+            - kms:Decrypt
+            - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:ViaService:
+                  Fn::Sub: pi.${AWS::Region}.amazonaws.com
+          - Sid: CloudWatchMetrics
+            Effect: Allow
+            Action:
+            - cloudwatch:GetMetricStatistics
+            - cloudwatch:GetMetricData
+            - cloudwatch:ListMetrics
+            - cloudwatch:DescribeAlarms
+            Resource: '*'
+          - Sid: RDSReadOnly
+            Effect: Allow
+            Action:
+            - rds:DescribeDBInstances
+            - rds:DescribeDBSnapshots
+            - rds:DescribeEvents
+            Resource: '*'
+          - Sid: SecretsManagerDBCredentials
+            Effect: Allow
+            Action:
+            - secretsmanager:GetSecretValue
+            Resource:
+            - Ref: DBSecretArn
+            - Ref: WebhookSecret
+          - Sid: SNSPublishAlerts
+            Effect: Allow
+            Action:
+            - sns:Publish
+            - sns:ListTopics
+            Resource:
+              Fn::Sub: arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*
+          - Sid: InvokeToolLambdas
+            Effect: Allow
+            Action:
+            - lambda:InvokeFunction
+            Resource:
+            - Fn::Sub: 
+                arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:dbops-health-tools
+            - Fn::Sub: 
+                arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:dbops-query-tools
+  InvokeGatewayPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: InvokeDbopsGateway
+      Roles:
+      - Ref: SigningRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: AllowGatewayInvocation
+          Effect: Allow
+          Action:
+          - bedrock-agentcore:InvokeGateway
+          Resource:
+            Fn::GetAtt:
+            - McpGateway
+            - GatewayArn
+  AgentSpaceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: DevOpsAgentRole-AgentSpace
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: aidevops.amazonaws.com
+          Action: sts:AssumeRole
+          Condition:
+            StringEquals:
+              aws:SourceAccount:
+                Ref: AWS::AccountId
+            ArnLike:
+              aws:SourceArn:
+                Fn::Sub: 
+                  arn:aws:aidevops:${AWS::Region}:${AWS::AccountId}:agentspace/*
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AIDevOpsAgentAccessPolicy
+      Policies:
+      - PolicyName: AllowCreateServiceLinkedRoles
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: AllowCreateServiceLinkedRoles
+            Effect: Allow
+            Action:
+            - iam:CreateServiceLinkedRole
+            Resource:
+            - Fn::Sub: 
+                arn:aws:iam::${AWS::AccountId}:role/aws-service-role/resource-explorer-2.amazonaws.com/AWSServiceRoleForResourceExplorer
+  WebappAdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: DevOpsAgentRole-WebappAdmin
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: aidevops.amazonaws.com
+          Action:
+          - sts:AssumeRole
+          - sts:TagSession
+          Condition:
+            StringEquals:
+              aws:SourceAccount:
+                Ref: AWS::AccountId
+            ArnLike:
+              aws:SourceArn:
+                Fn::Sub: 
+                  arn:aws:aidevops:${AWS::Region}:${AWS::AccountId}:agentspace/*
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AIDevOpsOperatorAppAccessPolicy
+  PymssqlLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: pymssql-layer
+      CompatibleRuntimes:
+      - python3.12
+      Content: ./pymssql-layer-3.12.zip
+  HealthToolsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: dbops-health-tools
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - SigningRole
+        - Arn
+      Code: ./lambda/health
+      Layers:
+      - Ref: PymssqlLayer
+      Timeout: 60
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds:
+        - Ref: SecurityGroupId
+        SubnetIds:
+        - Ref: Subnet1
+        - Ref: Subnet2
+      Environment:
+        Variables:
+          DB_INSTANCE_ID:
+            Ref: DBInstanceId
+          DB_SECRET_ID:
+            Ref: DBSecretArn
+          AWS_REGION_NAME:
+            Ref: AWS::Region
+          SNS_TOPIC_NAME:
+            Ref: SnsTopicName
+  QueryToolsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: dbops-query-tools
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - SigningRole
+        - Arn
+      Code: ./lambda/query
+      Layers:
+      - Ref: PymssqlLayer
+      Timeout: 60
+      MemorySize: 256
+      VpcConfig:
+        SecurityGroupIds:
+        - Ref: SecurityGroupId
+        SubnetIds:
+        - Ref: Subnet1
+        - Ref: Subnet2
+      Environment:
+        Variables:
+          DB_INSTANCE_ID:
+            Ref: DBInstanceId
+          DB_SECRET_ID:
+            Ref: DBSecretArn
+          AWS_REGION_NAME:
+            Ref: AWS::Region
+          SNS_TOPIC_NAME:
+            Ref: SnsTopicName
+  HealthToolsGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: HealthToolsFunction
+      Action: lambda:InvokeFunction
+      Principal: bedrock-agentcore.amazonaws.com
+  QueryToolsGatewayPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: QueryToolsFunction
+      Action: lambda:InvokeFunction
+      Principal: bedrock-agentcore.amazonaws.com
+  WebhookSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: dbops-devops-agent-webhook
+      Description: DevOps Agent webhook credentials for alarm-triggered 
+        investigations
+      SecretString: '{"webhookUrl":"REPLACE_AFTER_STEP_16A","webhookSecret":"REPLACE_AFTER_STEP_16A"}'
+  WebhookExecutorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: dbops-webhook-executor
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - SigningRole
+        - Arn
+      Code: ./lambda/webhook
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          WEBHOOK_SECRET_ARN:
+            Ref: WebhookSecret
+  WebhookAlarmPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: WebhookExecutorFunction
+      Action: lambda:InvokeFunction
+      Principal: lambda.alarms.cloudwatch.amazonaws.com
+      SourceAccount:
+        Ref: AWS::AccountId
+  HighCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: dbops-demo-HighCPU
+      AlarmDescription: RDS CPU utilization high — triggers DevOps Agent 
+        investigation
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value:
+          Ref: DBInstanceId
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+      - Fn::GetAtt:
+        - WebhookExecutorFunction
+        - Arn
+  HighConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: dbops-demo-HighConnections
+      AlarmDescription: RDS database connections high — triggers DevOps Agent 
+        investigation
+      Namespace: AWS/RDS
+      MetricName: DatabaseConnections
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value:
+          Ref: DBInstanceId
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+      - Fn::GetAtt:
+        - WebhookExecutorFunction
+        - Arn
+  HighReadLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: dbops-demo-HighReadLatency
+      AlarmDescription: RDS read latency high — triggers DevOps Agent 
+        investigation
+      Namespace: AWS/RDS
+      MetricName: ReadLatency
+      Dimensions:
+      - Name: DBInstanceIdentifier
+        Value:
+          Ref: DBInstanceId
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0.02
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+      - Fn::GetAtt:
+        - WebhookExecutorFunction
+        - Arn
+  McpGateway:
+    Type: AWS::BedrockAgentCore::Gateway
+    Properties:
+      Name: dbops-mcp-gateway
+      RoleArn:
+        Fn::GetAtt:
+        - SigningRole
+        - Arn
+      ProtocolType: MCP
+      AuthorizerType: AWS_IAM
+      ProtocolConfiguration:
+        Mcp:
+          SearchType: SEMANTIC
+  HealthToolsTarget:
+    Type: AWS::BedrockAgentCore::GatewayTarget
+    DependsOn: HealthToolsGatewayPermission
+    Properties:
+      Name: dbops-health-tools
+      GatewayIdentifier:
+        Fn::GetAtt:
+        - McpGateway
+        - GatewayIdentifier
+      CredentialProviderConfigurations:
+      - CredentialProviderType: GATEWAY_IAM_ROLE
+      TargetConfiguration:
+        Mcp:
+          Lambda:
+            LambdaArn:
+              Fn::GetAtt:
+              - HealthToolsFunction
+              - Arn
+            ToolSchema:
+              InlinePayload:
+              - Name: get_cpu_utilization
+                Description: Get CPU utilization timeline from CloudWatch
+                InputSchema:
+                  Type: object
+                  Properties:
+                    minutes_back:
+                      Type: integer
+                      Description: Lookback window in minutes (default 1440)
+              - Name: get_database_load
+                Description: Get database load (Active Average Sessions) from 
+                  Performance Insights
+                InputSchema:
+                  Type: object
+                  Properties:
+                    hours_back:
+                      Type: integer
+                      Description: Lookback window in hours (default 24)
+              - Name: get_extended_database_load
+                Description: Get extended database load with wait event 
+                  breakdown
+                InputSchema:
+                  Type: object
+                  Properties:
+                    hours_back:
+                      Type: integer
+                      Description: Lookback window in hours (default 24)
+              - Name: get_database_connections
+                Description: Get current database connection count from 
+                  CloudWatch
+                InputSchema:
+                  Type: object
+                  Properties:
+                    minutes_back:
+                      Type: integer
+                      Description: Lookback window in minutes (default 1440)
+              - Name: get_freeable_memory
+                Description: Get freeable memory from CloudWatch
+                InputSchema:
+                  Type: object
+                  Properties:
+                    minutes_back:
+                      Type: integer
+                      Description: Lookback window in minutes (default 1440)
+              - Name: get_free_storage
+                Description: Get free storage space from CloudWatch
+                InputSchema:
+                  Type: object
+                  Properties:
+                    minutes_back:
+                      Type: integer
+                      Description: Lookback window in minutes (default 1440)
+              - Name: get_iops
+                Description: Get read/write IOPS from CloudWatch
+                InputSchema:
+                  Type: object
+                  Properties:
+                    minutes_back:
+                      Type: integer
+                      Description: Lookback window in minutes (default 1440)
+              - Name: get_read_write_latency
+                Description: Get read/write latency from CloudWatch
+                InputSchema:
+                  Type: object
+                  Properties:
+                    minutes_back:
+                      Type: integer
+                      Description: Lookback window in minutes (default 1440)
+              - Name: get_network_throughput
+                Description: Get network receive/transmit throughput from 
+                  CloudWatch
+                InputSchema:
+                  Type: object
+                  Properties:
+                    minutes_back:
+                      Type: integer
+                      Description: Lookback window in minutes (default 1440)
+              - Name: get_wait_events
+                Description: Get top wait events from Performance Insights
+                InputSchema:
+                  Type: object
+                  Properties:
+                    hours_back:
+                      Type: integer
+                      Description: Lookback window in hours (default 1)
+              - Name: get_top_sql
+                Description: Get top SQL statements by load from Performance 
+                  Insights
+                InputSchema:
+                  Type: object
+                  Properties:
+                    hours_back:
+                      Type: integer
+                      Description: Lookback window in hours (default 1)
+              - Name: get_users
+                Description: Get top database users by load from Performance 
+                  Insights
+                InputSchema:
+                  Type: object
+                  Properties:
+                    hours_back:
+                      Type: integer
+                      Description: Lookback window in hours (default 1)
+              - Name: get_applications
+                Description: Get top applications by load from Performance 
+                  Insights
+                InputSchema:
+                  Type: object
+                  Properties:
+                    hours_back:
+                      Type: integer
+                      Description: Lookback window in hours (default 1)
+              - Name: send_email_notification
+                Description: Send an alert notification via SNS
+                InputSchema:
+                  Type: object
+                  Properties:
+                    subject:
+                      Type: string
+                      Description: Email subject
+                    message:
+                      Type: string
+                      Description: Email body
+                    severity:
+                      Type: string
+                      Description: INFO, WARNING, or CRITICAL
+                  Required:
+                  - subject
+                  - message
+  QueryToolsTarget:
+    Type: AWS::BedrockAgentCore::GatewayTarget
+    DependsOn: QueryToolsGatewayPermission
+    Properties:
+      Name: dbops-query-tools
+      GatewayIdentifier:
+        Fn::GetAtt:
+        - McpGateway
+        - GatewayIdentifier
+      CredentialProviderConfigurations:
+      - CredentialProviderType: GATEWAY_IAM_ROLE
+      TargetConfiguration:
+        Mcp:
+          Lambda:
+            LambdaArn:
+              Fn::GetAtt:
+              - QueryToolsFunction
+              - Arn
+            ToolSchema:
+              InlinePayload:
+              - Name: check_query_store_enabled
+                Description: Check if Query Store is enabled on the database
+                InputSchema:
+                  Type: object
+                  Properties: {}
+              - Name: get_query_store_top_queries
+                Description: Get top queries from Query Store by CPU, duration, 
+                  IO, or memory
+                InputSchema:
+                  Type: object
+                  Properties:
+                    metric:
+                      Type: string
+                      Description: 'Sort metric: cpu, duration, io, memory (default
+                        cpu)'
+                    top_n:
+                      Type: integer
+                      Description: Number of results (default 10)
+              - Name: get_query_store_regressed_queries
+                Description: Get queries that have regressed in performance
+                InputSchema:
+                  Type: object
+                  Properties:
+                    metric:
+                      Type: string
+                      Description: 'Metric to compare: cpu, duration, io (default
+                        cpu)'
+              - Name: get_query_store_wait_stats
+                Description: Get wait statistics from Query Store
+                InputSchema:
+                  Type: object
+                  Properties: {}
+              - Name: get_query_execution_history
+                Description: Get execution history for a specific query
+                InputSchema:
+                  Type: object
+                  Properties:
+                    query_id:
+                      Type: integer
+                      Description: Query Store query ID
+                  Required:
+                  - query_id
+              - Name: get_query_store_plan_summary
+                Description: Get plan summary for a specific query
+                InputSchema:
+                  Type: object
+                  Properties:
+                    query_id:
+                      Type: integer
+                      Description: Query Store query ID
+                  Required:
+                  - query_id
+              - Name: get_slow_queries
+                Description: Get currently running slow queries
+                InputSchema:
+                  Type: object
+                  Properties:
+                    threshold_seconds:
+                      Type: integer
+                      Description: Minimum elapsed time in seconds (default 5)
+              - Name: get_blocking_sessions
+                Description: Get current blocking session chains
+                InputSchema:
+                  Type: object
+                  Properties: {}
+              - Name: get_query_plan_from_cache
+                Description: Get execution plan from plan cache for a query
+                InputSchema:
+                  Type: object
+                  Properties:
+                    sql_text_pattern:
+                      Type: string
+                      Description: SQL text pattern to search for
+                  Required:
+                  - sql_text_pattern
+              - Name: get_expensive_queries_from_cache
+                Description: Get most expensive queries from plan cache
+                InputSchema:
+                  Type: object
+                  Properties:
+                    metric:
+                      Type: string
+                      Description: 'Sort metric: cpu, reads, duration (default cpu)'
+                    top_n:
+                      Type: integer
+                      Description: Number of results (default 10)
+              - Name: suggest_indexes
+                Description: Get missing index suggestions from SQL Server
+                InputSchema:
+                  Type: object
+                  Properties:
+                    table_name:
+                      Type: string
+                      Description: 'Optional: filter to specific table'
+              - Name: get_index_usage
+                Description: Get index usage statistics
+                InputSchema:
+                  Type: object
+                  Properties:
+                    table_name:
+                      Type: string
+                      Description: 'Optional: filter to specific table'
+              - Name: send_email_notification
+                Description: Send an alert notification via SNS
+                InputSchema:
+                  Type: object
+                  Properties:
+                    subject:
+                      Type: string
+                      Description: Email subject
+                    message:
+                      Type: string
+                      Description: Email body
+                    severity:
+                      Type: string
+                      Description: INFO, WARNING, or CRITICAL
+                  Required:
+                  - subject
+                  - message
+  AgentSpace:
+    Type: AWS::DevOpsAgent::AgentSpace
+    Properties:
+      Name:
+        Ref: AgentSpaceName
+      Description: Agent Space for SQL Server database operations
+      OperatorApp:
+        Iam:
+          OperatorAppRoleArn:
+            Fn::GetAtt:
+            - WebappAdminRole
+            - Arn
+  AwsAccountAssociation:
+    Type: AWS::DevOpsAgent::Association
+    Properties:
+      AgentSpaceId:
+        Fn::GetAtt:
+        - AgentSpace
+        - AgentSpaceId
+      ServiceId: aws
+      Configuration:
+        Aws:
+          AccountId:
+            Ref: AWS::AccountId
+          AccountType: monitor
+          AssumableRoleArn:
+            Fn::GetAtt:
+            - AgentSpaceRole
+            - Arn
+  McpService:
+    Type: AWS::DevOpsAgent::Service
+    DependsOn: InvokeGatewayPolicy
+    Properties:
+      ServiceType: mcpserversigv4
+      ServiceDetails:
+        MCPServerSigV4:
+          Name: dbops-mcp
+          Endpoint:
+            Fn::GetAtt:
+            - McpGateway
+            - GatewayUrl
+          Description: SQL Server diagnostic tools via AgentCore Gateway
+          AuthorizationConfig:
+            Region:
+              Ref: AWS::Region
+            Service: bedrock-agentcore
+            McpRoleArn:
+              Fn::GetAtt:
+              - SigningRole
+              - Arn
+  McpToolAssociation:
+    Type: AWS::DevOpsAgent::Association
+    DependsOn:
+    - HealthToolsTarget
+    - QueryToolsTarget
+    Properties:
+      AgentSpaceId:
+        Fn::GetAtt:
+        - AgentSpace
+        - AgentSpaceId
+      ServiceId:
+        Fn::GetAtt:
+        - McpService
+        - ServiceId
+      Configuration:
+        MCPServerSigV4:
+          Tools:
+          - dbops-health-tools___get_applications
+          - dbops-health-tools___get_cpu_utilization
+          - dbops-health-tools___get_database_connections
+          - dbops-health-tools___get_database_load
+          - dbops-health-tools___get_extended_database_load
+          - dbops-health-tools___get_free_storage
+          - dbops-health-tools___get_freeable_memory
+          - dbops-health-tools___get_iops
+          - dbops-health-tools___get_network_throughput
+          - dbops-health-tools___get_read_write_latency
+          - dbops-health-tools___get_top_sql
+          - dbops-health-tools___get_users
+          - dbops-health-tools___get_wait_events
+          - dbops-health-tools___send_email_notification
+          - dbops-query-tools___check_query_store_enabled
+          - dbops-query-tools___get_blocking_sessions
+          - dbops-query-tools___get_expensive_queries_from_cache
+          - dbops-query-tools___get_index_usage
+          - dbops-query-tools___get_query_execution_history
+          - dbops-query-tools___get_query_plan_from_cache
+          - dbops-query-tools___get_query_store_plan_summary
+          - dbops-query-tools___get_query_store_regressed_queries
+          - dbops-query-tools___get_query_store_top_queries
+          - dbops-query-tools___get_query_store_wait_stats
+          - dbops-query-tools___get_slow_queries
+          - dbops-query-tools___send_email_notification
+          - dbops-query-tools___suggest_indexes
+  SkillAsset:
+    Type: AWS::DevOpsAgent::Asset
+    Properties:
+      AgentSpaceId:
+        Fn::GetAtt:
+        - AgentSpace
+        - AgentSpaceId
+      AssetType: skill
+      Metadata:
+        name: sql-server-investigation
+        description: Incident investigation procedures for Amazon RDS for SQL 
+          Server performance issues — blocking and lock contention, plan 
+          regression, slow or high-impact queries, and missing indexes.
+        agent_types:
+        - GENERIC
+      Files:
+      - Path: SKILL.md
+        ContentText: "---\nname: sql-server-investigation\ndescription: Incident investigation\
+          \ procedures for Amazon RDS for SQL Server\n  performance issues including\
+          \ blocking and lock contention, plan regression,\n  slow or high-impact\
+          \ queries, and missing indexes. Use this skill when\n  investigating SQL\
+          \ Server database latency, high CPU, blocked sessions, query\n  timeouts,\
+          \ or read/write performance degradation. Triggers on requests like\n  \"\
+          investigate SQL Server blocking\", \"RDS SQL Server high CPU\", \"query\
+          \ timeout\n  RCA\", \"plan regression\", or \"why is my SQL Server slow\"\
+          .\nmetadata:\n  version: \"1.0.0\"\n  aws-devops-agent-skills.agent-types:\
+          \ \"Incident RCA\"\n  aws-devops-agent-skills.aws-services: \"Amazon RDS\"\
+          \n  aws-devops-agent-skills.technical-domains: \"Databases\"\n---\n\n# SQL\
+          \ Server Investigation\n\nStructured troubleshooting methodology for Amazon\
+          \ RDS for SQL Server. Work from\nthe lightweight signal outward: use native\
+          \ AWS APIs to triage and localize the\nproblem, then use the MCP tools to\
+          \ resolve the session-, plan-, and index-level\ndetail those APIs cannot\
+          \ reach.\n\n## Investigation Workflow\n\nFollow these steps in order for\
+          \ every investigation.\n\n### Step 1: TRIAGE — Assess Overall Health\n\n\
+          Always start here regardless of the reported symptom. Retrieve current values\
+          \ and\nactive alarms from native AWS APIs:\n\n```\ncloudwatch.DescribeAlarms\
+          \     # active alarms on the instance\ncloudwatch.GetMetricData      # CPUUtilization,\
+          \ DatabaseConnections,\n                              # FreeableMemory,\
+          \ FreeStorageSpace\npi.GetResourceMetrics         # db.load — Average Active\
+          \ Sessions (AAS)\n```\n\n**Severity thresholds:**\n\n| Severity | Criteria\
+          \ |\n|----------|----------|\n| CRITICAL | CPU > 90% OR AAS > 8 OR connections\
+          \ near max OR FreeableMemory < 1 GB |\n| WARNING | CPU > 70% OR AAS > 4\
+          \ OR memory declining OR connections > 70% of max |\n| INFO | All metrics\
+          \ within normal ranges |\n\n### Step 2: DIAGNOSE — Identify Bottleneck Type\n\
+          \nUse Performance Insights to find the dominant wait over the incident window,\
+          \ then\nroute based on the wait type:\n\n```\npi.GetResourceMetrics    \
+          \     # db.load grouped by wait event\npi.DescribeDimensionKeys      # top\
+          \ SQL by database time\n```\n\n| Dominant Wait Type | Bottleneck | Go To\
+          \ |\n|-------------------|-----------|-------|\n| CPU | Compute-bound queries\
+          \ | Step 3a |\n| Lock / `LCK_M_*` | Blocking and locking | Step 3b |\n|\
+          \ IO / `PAGEIOLATCH` | Storage I/O saturation | Step 3c |\n| Memory / `RESOURCE_SEMAPHORE`\
+          \ | Memory pressure | Step 3d |\n| Network / `ASYNC_NETWORK_IO` | Network\
+          \ saturation | Step 3e |\n\n### Step 3: DRILL DOWN — Investigate the Specific\
+          \ Area\n\n#### 3a: CPU-Bound\n\n```\nget_query_store_top_queries       \
+          \ # metric=\"cpu\" — top CPU consumers with plan_ids\nget_expensive_queries_from_cache\
+          \   # metric=\"cpu\" — heavy queries in plan cache\nsuggest_indexes    \
+          \                # missing indexes causing scans\n```\n\n#### 3b: Blocking\n\
+          \n```\nget_blocking_sessions              # blocking chains and head blocker\n\
+          get_slow_queries                   # long-running statements holding locks\n\
+          get_query_store_wait_stats         # lock wait time by query\n```\n\n####\
+          \ 3c: IO Saturation\n\n```\ncloudwatch.GetMetricData           # ReadIOPS,\
+          \ WriteIOPS vs provisioned limits\ncloudwatch.GetMetricData           #\
+          \ ReadLatency, WriteLatency spikes\nget_query_store_top_queries        #\
+          \ metric=\"io\" — heaviest I/O queries\n```\n\n#### 3d: Memory Pressure\n\
+          \n```\ncloudwatch.GetMetricData           # FreeableMemory trend over time\n\
+          get_query_store_top_queries        # metric=\"memory\" — memory-grant-heavy\
+          \ queries\npi.GetResourceMetrics              # db.load correlation with\
+          \ memory waits\n```\n\n#### 3e: Network\n\n```\ncloudwatch.GetMetricData\
+          \           # NetworkReceiveThroughput, NetworkTransmitThroughput\ncloudwatch.GetMetricData\
+          \           # DatabaseConnections — connection churn\npi.DescribeDimensionKeys\
+          \           # connected applications driving traffic\n```\n\n### Step 4:\
+          \ CORRELATE — Cross-Reference Findings\n\n```\nget_query_store_regressed_queries\
+          \  # recent regression or chronic? (MCP)\npi.GetResourceMetrics        \
+          \      # current load vs historical baseline\npi.DescribeDimensionKeys \
+          \          # which users and applications contribute most load\n```\n\n\
+          ### Step 5: RECOMMEND — Produce Actionable Output\n\nStructure the response\
+          \ as:\n\n1. **Severity** — CRITICAL / WARNING / INFO with the supporting\
+          \ thresholds.\n2. **Root cause** — one-sentence diagnosis with metric values.\n\
+          3. **Evidence** — specific numbers, timestamps, percentages, session IDs,\
+          \ SQL\n   text, `plan_id`s, and regression factor where applicable.\n4.\
+          \ **Recommendations** — ordered, most impactful first.\n5. **Queries to\
+          \ investigate** — specific SQL statements to review.\n6. **Index suggestions**\
+          \ — `CREATE INDEX` statements if applicable.\n\n## Data Source Boundaries\n\
+          \nPrefer native AWS APIs for everything they expose; reserve the MCP tools\
+          \ for\nSQL-level detail those APIs cannot reach.\n\nAvailable natively through\
+          \ AWS APIs (prefer these):\n\n- CloudWatch metrics — CPU, memory, storage,\
+          \ IOPS, latency, connections.\n- Performance Insights / Database Insights\
+          \ — database load, top wait events, top\n  SQL by database time, active\
+          \ sessions.\n- CloudWatch Logs — SQL Server error log, including deadlock\
+          \ traces (trace flags\n  1204/1222).\n- CloudTrail — parameter group changes,\
+          \ failovers, configuration modifications.\n\nOnly available through the\
+          \ MCP tools (direct SQL connection required) — for\nexample:\n\n- The exact\
+          \ blocking chain and head blocker (`get_blocking_sessions`).\n- Execution-plan\
+          \ regression history (`get_query_store_regressed_queries`).\n- Top resource-consuming\
+          \ queries with plan_ids (`get_query_store_top_queries`).\n- Queries and\
+          \ plans from the cache (`get_expensive_queries_from_cache`,\n  `get_query_plan_from_cache`).\n\
+          - Live missing-index recommendations and existing index usage\n  (`suggest_indexes`,\
+          \ `get_index_usage`).\n"
+      - Path: references/tool-reference.md
+        ContentText: "# Tool Reference\n\n## Health Metrics Thresholds\n\n| Metric\
+          \ | Normal | Warning | Critical | Tool |\n|--------|--------|---------|----------|------|\n\
+          | CPU Utilization | < 70% | 70–90% | > 90% | `get_cpu_utilization` |\n|\
+          \ Database Load (AAS) | < 2 | 2–4 | > 4 | `get_database_load` |\n| Connections\
+          \ | < 80% of max | 80–90% of max | > 90% of max | `get_database_connections`\
+          \ |\n| Freeable Memory | > 2 GB | 1–2 GB | < 1 GB | `get_freeable_memory`\
+          \ |\n| Free Storage | > 20% | 10–20% | < 10% | `get_free_storage` |\n| Read/Write\
+          \ Latency | < 5 ms | 5–20 ms | > 20 ms | `get_read_write_latency` |\n\n\
+          ## Tool Parameters\n\n| Tool | Key Parameter | Default | Usage |\n|------|--------------|---------|-------|\n\
+          | `get_cpu_utilization` | `minutes_back` | 1440 | Lookback window (default\
+          \ 24h) |\n| `get_database_load` | `hours_back` | 24 | Lookback window in\
+          \ hours |\n| `get_query_store_top_queries` | `metric` | `\"cpu\"` | Sort\
+          \ by: `\"cpu\"`, `\"duration\"`, `\"io\"`, `\"memory\"` |\n| `get_query_store_top_queries`\
+          \ | `top_n` | 10 | Number of results to return |\n| `get_slow_queries` |\
+          \ `threshold_seconds` | 5 | Minimum elapsed time to qualify |\n| `get_expensive_queries_from_cache`\
+          \ | `metric` | `\"cpu\"` | Sort by: `\"cpu\"`, `\"reads\"`, `\"duration\"\
+          ` |\n| `suggest_indexes` | `table_name` | None | Optional filter to specific\
+          \ table |\n| `send_email_notification` | `severity` | `\"INFO\"` | `\"INFO\"\
+          `, `\"WARNING\"`, `\"CRITICAL\"` |\n\n## Wait Event Categories\n\n| Wait\
+          \ Category | Common Waits | Indicates |\n|--------------|-------------|-----------|\n\
+          | CPU | SOS_SCHEDULER_YIELD, CXPACKET | Compute-bound workload |\n| Lock\
+          \ | LCK_M_X, LCK_M_S, LCK_M_U | Blocking between sessions |\n| IO | PAGEIOLATCH_SH,\
+          \ PAGEIOLATCH_EX, WRITELOG | Storage bottleneck |\n| Memory | RESOURCE_SEMAPHORE,\
+          \ CMEMTHREAD | Memory pressure |\n| Network | ASYNC_NETWORK_IO | Client\
+          \ not consuming results fast enough |\n"
+  AgentsMdAsset:
+    Type: AWS::DevOpsAgent::Asset
+    Properties:
+      AgentSpaceId:
+        Fn::GetAtt:
+        - AgentSpace
+        - AgentSpaceId
+      AssetType: agents_md
+      Metadata:
+        agent_type: INCIDENT_RCA
+      Files:
+      - Path: AGENTS.md
+        ContentText: "Agent Type: Investigation (INCIDENT_RCA)\n\n# Investigation\
+          \ Agent Instructions\n\n## SQL Server Investigations\n\nWhen investigating\
+          \ issues involving SQL Server or RDS SQL Server instances, always\nuse the\
+          \ `sql-server-investigation` skill.\n\n### Triggers\n\nApply this skill\
+          \ when the investigation involves any of the following:\n\n- SQL Server\
+          \ or MSSQL database instances\n- RDS SQL Server (any edition)\n- High CPU,\
+          \ query timeouts, or performance issues on SQL Server\n- Blocking, deadlocks,\
+          \ or lock contention\n- Query performance degradation or regressions\n\n\
+          ### Why\n\nThe `sql-server-investigation` skill provides SQL Server-specific\
+          \ diagnostic\ncapabilities including:\n\n- DMV analysis (`sys.dm_exec_requests`,\
+          \ `sys.dm_tran_locks`, `sys.dm_os_waiting_tasks`)\n- Blocking chain identification\n\
+          - Wait event interpretation (LCK_M_IX, LCK_M_X, LCK_M_S, CXPACKET, etc.)\n\
+          - Query Store and execution plan analysis\n- Extended Events (XEL) file\
+          \ parsing\n\nThese capabilities go beyond generic AWS observability tools\
+          \ and provide deeper root\ncause analysis for SQL Server-specific issues.\n"
+Outputs:
+  GatewayUrl:
+    Description: AgentCore MCP gateway URL
+    Value:
+      Fn::GetAtt:
+      - McpGateway
+      - GatewayUrl
+  SigningRoleArn:
+    Description: Multi-purpose signing/execution role ARN
+    Value:
+      Fn::GetAtt:
+      - SigningRole
+      - Arn
+  AgentSpaceId:
+    Description: DevOps Agent Space ID
+    Value:
+      Fn::GetAtt:
+      - AgentSpace
+      - AgentSpaceId
+  WebhookSecretArn:
+    Description: Webhook secret ARN — populate after Step 16a (console)
+    Value:
+      Ref: WebhookSecret

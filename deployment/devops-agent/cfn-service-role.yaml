@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Scoped CloudFormation service role for deploying dbops-devops-agent.yaml.
+  Pass its ARN to `aws cloudformation deploy --role-arn <arn>` so the operator
+  does not need broad standing permissions. Deploy this once, first.
+
+Parameters:
+  RoleName:
+    Type: String
+    Default: dbops-devops-agent-cfn-deployer
+    Description: Name for the CloudFormation service role
+
+Resources:
+  CfnDeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: dbops-devops-agent-deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: Lambda
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:PublishLayerVersion
+                  - lambda:DeleteLayerVersion
+                  - lambda:GetLayerVersion
+                  - lambda:ListLayerVersions
+                  - lambda:TagResource
+                Resource: '*'
+              - Sid: IAM
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:TagRole
+                Resource: '*'
+              # First AgentSpace in a fresh account triggers creation of the
+              # AWS DevOps Agent service-linked role.
+              - Sid: CreateAIDevOpsServiceLinkedRole
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/aidevops.amazonaws.com/AWSServiceRoleForAIDevOps
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: aidevops.amazonaws.com
+              - Sid: SecretsManager
+                Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:TagResource
+                Resource: '*'
+              - Sid: CloudWatchAlarms
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                Resource: '*'
+              # Enumerated (no wildcards). Gateway + target CRUD, tagging, and the
+              # workload-identity dependency the gateway provisions on create.
+              - Sid: AgentCoreGateway
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:CreateGateway
+                  - bedrock-agentcore:GetGateway
+                  - bedrock-agentcore:UpdateGateway
+                  - bedrock-agentcore:DeleteGateway
+                  - bedrock-agentcore:ListGateways
+                  - bedrock-agentcore:CreateGatewayTarget
+                  - bedrock-agentcore:GetGatewayTarget
+                  - bedrock-agentcore:UpdateGatewayTarget
+                  - bedrock-agentcore:DeleteGatewayTarget
+                  - bedrock-agentcore:ListGatewayTargets
+                  - bedrock-agentcore:SynchronizeGatewayTargets
+                  - bedrock-agentcore:CreateWorkloadIdentity
+                  - bedrock-agentcore:GetWorkloadIdentity
+                  - bedrock-agentcore:UpdateWorkloadIdentity
+                  - bedrock-agentcore:DeleteWorkloadIdentity
+                  - bedrock-agentcore:TagResource
+                  - bedrock-agentcore:UntagResource
+                  - bedrock-agentcore:ListTagsForResource
+                Resource: '*'
+              # Enumerated (no wildcards). DevOps Agent IAM actions use the
+              # `aidevops:` namespace (NOT the `devops-agent:` CLI name). Covers the
+              # agent space + operator app, service registration, associations, and
+              # skill / agents_md assets — create/read/update/delete/list + tagging.
+              - Sid: DevOpsAgentSpace
+                Effect: Allow
+                Action:
+                  - aidevops:CreateAgentSpace
+                  - aidevops:GetAgentSpace
+                  - aidevops:UpdateAgentSpace
+                  - aidevops:DeleteAgentSpace
+                  - aidevops:EnableOperatorApp
+                  - aidevops:GetOperatorApp
+                  - aidevops:DisableOperatorApp
+                Resource: '*'
+              - Sid: DevOpsAgentServicesAndAssociations
+                Effect: Allow
+                Action:
+                  - aidevops:RegisterService
+                  - aidevops:GetService
+                  - aidevops:DeregisterService
+                  - aidevops:AssociateService
+                  - aidevops:GetAssociation
+                  - aidevops:UpdateAssociation
+                  - aidevops:DisassociateService
+                  - aidevops:ListAssociations
+                Resource: '*'
+              - Sid: DevOpsAgentAssets
+                Effect: Allow
+                Action:
+                  - aidevops:CreateAsset
+                  - aidevops:GetAsset
+                  - aidevops:UpdateAsset
+                  - aidevops:DeleteAsset
+                  - aidevops:ListAssets
+                  - aidevops:ListAssetVersions
+                  - aidevops:GetAssetContent
+                  - aidevops:CreateAssetFile
+                  - aidevops:GetAssetFile
+                  - aidevops:UpdateAssetFile
+                  - aidevops:DeleteAssetFile
+                  - aidevops:ListAssetFiles
+                  - aidevops:ListAssetTypes
+                Resource: '*'
+              - Sid: DevOpsAgentTagging
+                Effect: Allow
+                Action:
+                  - aidevops:TagResource
+                  - aidevops:UntagResource
+                  - aidevops:ListTagsForResource
+                Resource: '*'
+              - Sid: EC2ReadForParamValidation
+                Effect: Allow
+                Action:
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                Resource: '*'
+              - Sid: ArtifactBucketRead
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: Pass to `aws cloudformation deploy --role-arn <this>`
+    Value: !GetAtt CfnDeployerRole.Arn

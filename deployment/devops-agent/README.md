@@ -27,7 +27,48 @@ Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.
 4. An investigation skill teaches the agent your structured troubleshooting methodology
 5. CloudWatch Alarms invoke a webhook executor Lambda that triggers investigations automatically
 
-## Prerequisites
+## Deploy with CloudFormation (recommended)
+
+A single stack — [`dbops-devops-agent.yaml`](dbops-devops-agent.yaml) — provisions
+the whole integration (Lambdas, layer, gateway + targets, agent space, web app, MCP
+service, tool allowlist, skill/agent-instruction assets, webhook secret, executor
+Lambda, and alarms). The only manual step is minting the webhook URL+secret in the
+console. **[SETUP.md](SETUP.md) is the authoritative walkthrough** — the commands
+below are a summary.
+
+```bash
+cd deployment/devops-agent
+export AWS_REGION=us-west-2
+export YOUR_ARTIFACT_BUCKET="dbops-devops-agent-artifacts-$(aws sts get-caller-identity --query Account --output text)-$AWS_REGION"
+aws s3api create-bucket --bucket "$YOUR_ARTIFACT_BUCKET" --region "$AWS_REGION" \
+  --create-bucket-configuration LocationConstraint="$AWS_REGION" 2>/dev/null || true
+
+cp parameters.example.json parameters.json    # fill in your dbops stack outputs
+
+aws cloudformation package --template-file dbops-devops-agent.yaml \
+  --s3-bucket "$YOUR_ARTIFACT_BUCKET" --output-template-file packaged.yaml --region "$AWS_REGION"
+
+aws cloudformation deploy --template-file packaged.yaml --stack-name dbops-devops-agent \
+  --region "$AWS_REGION" --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides $(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
+```
+
+> `--parameter-overrides` takes inline `Key=Value` pairs (not `file://`), so the `jq`
+> expression turns `parameters.json` into pairs. Keep it **last** on the command — it
+> is greedy and swallows any flag after it.
+
+**Optional least-privilege deploy role:** deploy [`cfn-service-role.yaml`](cfn-service-role.yaml)
+first and add `--role-arn "$CFN_ROLE_ARN"` (before `--parameter-overrides`). It carries
+an enumerated, wildcard-free policy verified by an end-to-end deploy — suitable for
+customer-facing / AppSec-reviewed accounts.
+
+Then populate the webhook secret (SETUP.md Step 2) and verify. Teardown is a single
+`aws cloudformation delete-stack --stack-name dbops-devops-agent`.
+
+The scripted, step-by-step path below remains as an alternative for local
+development or non-CloudFormation setups.
+
+## Prerequisites (scripted path)
 
 - `deployment/agentcore/deploy.sh` completed (5 agents running on AgentCore Runtime)
 - `.env` sourced with all environment variables
@@ -54,10 +95,11 @@ This creates `gateway_config.json` with the Gateway URL.
 > own native CloudWatch and Performance Insights APIs rather than these MCP tools.
 > To deploy the SQL-level query tools only, run `./deploy_gateway.sh --query-only`.
 
-> **Prefer to run each step by hand?** `deploy_gateway.sh` automates the gateway
-> setup. For the full manual, step-by-step walkthrough of what it does (IAM policy,
-> publishing the pymssql layer, packaging and creating each Lambda, creating the
-> gateway, and registering targets), see [SETUP.md](SETUP.md).
+> **What it does:** publishes the pymssql layer, packages and creates each tool
+> Lambda, creates the gateway, and registers the targets. Read
+> [`deploy_gateway.sh`](deploy_gateway.sh) and [`setup_gateway.py`](setup_gateway.py)
+> for the exact steps. (The CloudFormation path at the top does all of this
+> declaratively.)
 
 ### Verify Gateway
 
@@ -70,29 +112,26 @@ Ask: "What is the current CPU utilization?" — confirms tools work end-to-end v
 ## Step 2: Create the Agent Space
 
 Create the Agent Space IAM roles, the Agent Space itself, associate your AWS
-account, and enable the Web App. These steps are documented in detail in
-[SETUP.md](SETUP.md) — see:
+account, and enable the Web App. [`setup_agent_space.sh`](setup_agent_space.sh)
+automates all of this:
 
-- **Step 8 — Create Agent Space IAM Roles**
-- **Step 9 — Create Agent Space**
-- **Step 10 — Associate AWS Account**
-- **Step 11 — Enable Web App**
+```bash
+./setup_agent_space.sh
+```
 
-> Run them from `deployment/devops-agent/` with `.env` sourced (so `$AWS_REGION`,
-> `$AWS_ACCOUNTID`, and `$AGENTCORE_ROLE_ARN` are set). They export
+> Run it from `deployment/devops-agent/` with `.env` sourced (so `$AWS_REGION`,
+> `$AWS_ACCOUNTID`, and `$AGENTCORE_ROLE_ARN` are set). It exports
 > `$AGENT_SPACE_ID`, which the next step uses.
 
 ## Step 3: Connect Gateway as MCP Server
 
 Register the AgentCore Gateway (deployed in Step 1) as an MCP server on the Agent
-Space and allowlist all 27 tools. The gateway uses AWS IAM (SigV4) auth. These
-steps are documented in detail in [SETUP.md](SETUP.md) — see:
-
-- **Step 12 — Register Gateway as MCP Server**
-- **Step 13 — Allowlist Tools**
+Space and allowlist all 27 tools. The gateway uses AWS IAM (SigV4) auth.
+[`setup_agent_space.sh`](setup_agent_space.sh) (Step 2) also performs the MCP
+service registration and tool allowlist.
 
 > These read `gateway_config.json` (from Step 1) for the Gateway URL and use
-> `$AGENT_SPACE_ID` (from Step 2) and `$AGENTCORE_ROLE_ARN`.
+> `$AGENT_SPACE_ID` and `$AGENTCORE_ROLE_ARN`.
 
 ## Step 4: Upload Investigation Skill
 
@@ -116,8 +155,6 @@ tell the agent which skill to use for which scenario.
 2. Click **sql-server-dbops** → **Operator access** → **Agent instructions**
 3. Paste the contents of [`AGENTS.md`](AGENTS.md) (Agent Type **Investigation / INCIDENT_RCA**) and save
 
-See [SETUP.md Step 15](SETUP.md#step-15--add-agent-instructions-recommended) for details.
-
 ## Step 5: Connect CloudWatch Alarms (event-driven investigations)
 
 Wire CloudWatch Alarms to DevOps Agent so that threshold breaches automatically
@@ -130,7 +167,9 @@ The flow: **CloudWatch Alarm → Lambda (direct invoke) → DevOps Agent Webhook
 3. Deploy the webhook executor Lambda (`lambda/webhook/lambda_function.py`)
 4. Create CloudWatch alarms with the Lambda ARN as the alarm action
 
-The full step-by-step commands are in [SETUP.md](SETUP.md) — see **Step 16**.
+The webhook executor Lambda and the three alarms are created by the CloudFormation
+stack; only the webhook URL/secret must be minted in the console. See
+[SETUP.md](SETUP.md) Step 2 for the credential step.
 
 ## Use It
 
@@ -167,8 +206,14 @@ Tool names in DevOps Agent use the format: `<target>___<tool>` (triple underscor
 
 ## Cleanup
 
-Tear down in this order. (For the authoritative, fully-detailed teardown — including
-every variable lookup — see the **Cleanup** section of [SETUP.md](SETUP.md).)
+**CloudFormation deploy:** one command tears down everything —
+
+```bash
+aws cloudformation delete-stack --stack-name dbops-devops-agent --region "$AWS_REGION"
+```
+
+**Scripted path:** if you deployed with the scripts instead of CloudFormation, tear
+down in this order (`deploy_gateway.sh --cleanup` handles the gateway/Lambdas/layer):
 
 ```bash
 # 1. Webhook executor and alarms (Step 5)
