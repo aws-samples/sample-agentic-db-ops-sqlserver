@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: DevOps Agent setup for SQL Server DBOps — Lambdas, pymssql layer, 
-  AgentCore MCP gateway + targets, DevOps Agent space/service/association, skill
-  + agent-instruction assets, and alarm-driven webhook plumbing. Replaces the 
-  imperative SETUP.md runbook. Deploy with `aws cloudformation package` (uploads
-  Lambda/layer artifacts) then `deploy`. Step 16a (mint the webhook URL+secret 
-  in the console) remains a manual step.
+Description: DevOps Agent setup for SQL Server DBOps. Provisions Lambdas, pymssql
+  layer, AgentCore MCP gateway and targets, DevOps Agent space/service/association,
+  skill and agent-instruction assets, and alarm-driven webhook plumbing. See the
+  README in deployment/devops-agent for the walkthrough. Deploy with
+  `aws cloudformation package` (uploads Lambda/layer artifacts) then `deploy`.
+  Minting the webhook URL and secret in the console remains a manual step.
 Parameters:
   DBInstanceId:
     Type: String

@@ -114,7 +114,7 @@ echo "│  📦 Packaging Lambda functions                                │"
 echo "└──────────────────────────────────────────────────────────────┘"
 # Package Lambda functions from the self-contained lambda/<func>/ directories.
 # Each dir already includes lambda_function.py + tools + shared_utils.py + config/,
-# so we zip them directly (matches SETUP.md).
+# so we zip them directly.
 LAMBDA_DIR="$SCRIPT_DIR/lambda"
 
 # Health tools Lambda (skipped with --query-only)
