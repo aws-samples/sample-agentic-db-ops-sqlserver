@@ -669,31 +669,47 @@ Resources:
           - Live missing-index recommendations and existing index usage\n  (`suggest_indexes`,\
           \ `get_index_usage`).\n"
       - Path: references/tool-reference.md
-        ContentText: "# Tool Reference\n\n## Health Metrics Thresholds\n\n| Metric\
-          \ | Normal | Warning | Critical | Tool |\n|--------|--------|---------|----------|------|\n\
-          | CPU Utilization | < 70% | 70–90% | > 90% | `get_cpu_utilization` |\n|\
-          \ Database Load (AAS) | < 2 | 2–4 | > 4 | `get_database_load` |\n| Connections\
-          \ | < 80% of max | 80–90% of max | > 90% of max | `get_database_connections`\
-          \ |\n| Freeable Memory | > 2 GB | 1–2 GB | < 1 GB | `get_freeable_memory`\
-          \ |\n| Free Storage | > 20% | 10–20% | < 10% | `get_free_storage` |\n| Read/Write\
-          \ Latency | < 5 ms | 5–20 ms | > 20 ms | `get_read_write_latency` |\n\n\
-          ## Tool Parameters\n\n| Tool | Key Parameter | Default | Usage |\n|------|--------------|---------|-------|\n\
-          | `get_cpu_utilization` | `minutes_back` | 1440 | Lookback window (default\
-          \ 24h) |\n| `get_database_load` | `hours_back` | 24 | Lookback window in\
-          \ hours |\n| `get_query_store_top_queries` | `metric` | `\"cpu\"` | Sort\
-          \ by: `\"cpu\"`, `\"duration\"`, `\"io\"`, `\"memory\"` |\n| `get_query_store_top_queries`\
-          \ | `top_n` | 10 | Number of results to return |\n| `get_slow_queries` |\
-          \ `threshold_seconds` | 5 | Minimum elapsed time to qualify |\n| `get_expensive_queries_from_cache`\
-          \ | `metric` | `\"cpu\"` | Sort by: `\"cpu\"`, `\"reads\"`, `\"duration\"\
-          ` |\n| `suggest_indexes` | `table_name` | None | Optional filter to specific\
-          \ table |\n| `send_email_notification` | `severity` | `\"INFO\"` | `\"INFO\"\
-          `, `\"WARNING\"`, `\"CRITICAL\"` |\n\n## Wait Event Categories\n\n| Wait\
-          \ Category | Common Waits | Indicates |\n|--------------|-------------|-----------|\n\
-          | CPU | SOS_SCHEDULER_YIELD, CXPACKET | Compute-bound workload |\n| Lock\
-          \ | LCK_M_X, LCK_M_S, LCK_M_U | Blocking between sessions |\n| IO | PAGEIOLATCH_SH,\
-          \ PAGEIOLATCH_EX, WRITELOG | Storage bottleneck |\n| Memory | RESOURCE_SEMAPHORE,\
-          \ CMEMTHREAD | Memory pressure |\n| Network | ASYNC_NETWORK_IO | Client\
-          \ not consuming results fast enough |\n"
+        ContentText: |
+          # Tool Reference
+
+          ## Health Metrics Thresholds
+
+          Host metrics are read by the DevOps Agent natively (CloudWatch and Performance
+          Insights / Database Insights); they are not MCP tools. Use these thresholds during
+          triage.
+
+          | Metric | Normal | Warning | Critical | Source |
+          |--------|--------|---------|----------|--------|
+          | CPU Utilization | < 70% | 70 to 90% | > 90% | CloudWatch |
+          | Database Load (AAS) | < 2 | 2 to 4 | > 4 | Performance Insights |
+          | Connections | < 80% of max | 80 to 90% of max | > 90% of max | CloudWatch |
+          | Freeable Memory | > 2 GB | 1 to 2 GB | < 1 GB | CloudWatch |
+          | Free Storage | > 20% | 10 to 20% | < 10% | CloudWatch |
+          | Read/Write Latency | < 5 ms | 5 to 20 ms | > 20 ms | CloudWatch |
+
+          ## Tool Parameters
+
+          These are the MCP query tools the agent calls for SQL-level detail.
+
+          | Tool | Key Parameter | Default | Usage |
+          |------|--------------|---------|-------|
+          | `get_query_store_top_queries` | `metric` | `"cpu"` | Sort by: `"cpu"`, `"duration"`, `"io"`, `"memory"` |
+          | `get_query_store_top_queries` | `top_n` | 10 | Number of results to return |
+          | `get_slow_queries` | `threshold_seconds` | 5 | Minimum elapsed time to qualify |
+          | `get_expensive_queries_from_cache` | `metric` | `"cpu"` | Sort by: `"cpu"`, `"reads"`, `"duration"` |
+          | `suggest_indexes` | `table_name` | None | Optional filter to specific table |
+          | `send_email_notification` | `severity` | `"INFO"` | `"INFO"`, `"WARNING"`, `"CRITICAL"` |
+
+          ## Wait Event Categories
+
+          | Wait Category | Common Waits | Indicates |
+          |--------------|-------------|-----------|
+          | CPU | SOS_SCHEDULER_YIELD, CXPACKET | Compute-bound workload |
+          | Lock | LCK_M_X, LCK_M_S, LCK_M_U | Blocking between sessions |
+          | IO | PAGEIOLATCH_SH, PAGEIOLATCH_EX, WRITELOG | Storage bottleneck |
+          | Memory | RESOURCE_SEMAPHORE, CMEMTHREAD | Memory pressure |
+          | Network | ASYNC_NETWORK_IO | Client not consuming results fast enough |
+
   AgentsMdAsset:
     Type: AWS::DevOpsAgent::Asset
     Properties:
