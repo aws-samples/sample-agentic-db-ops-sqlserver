@@ -1,13 +1,13 @@
 # AWS DevOps Agent Integration
 
 Connect your SQL Server diagnostic tools to [AWS DevOps Agent](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent.html)
-for managed, zero-code investigations through a web interface. This is an alternative
-to invoking the agents directly on AgentCore Runtime (`agentcore invoke`): the same
-health and query capabilities, surfaced in a managed web app instead of the CLI.
+for managed, autonomous database investigations. The agent reads AWS telemetry natively
+and calls your SQL-level tools through an AgentCore Gateway, so on-call engineers get
+answers in a web app instead of juggling CloudWatch and a SQL client.
 
 The whole integration deploys as a **single CloudFormation stack**
-([`dbops-devops-agent.yaml`](dbops-devops-agent.yaml)). Only one step, minting the
-webhook credentials, must be done by hand in the console.
+([`dbops-devops-agent.yaml`](dbops-devops-agent.yaml)). The only manual step is minting
+the webhook credentials in the console.
 
 ## How It Works
 
@@ -57,10 +57,10 @@ skill is uploaded separately in Step 2, not by the stack.)
 
 ### IAM
 
-- **Signing/execution role (`AgentCoreDBOpsRole`)**: one role, three hats. It is the
-  tool Lambdas' execution role, the gateway's role, and the SigV4 signing role for
-  the MCP service. It holds least-privilege read access to CloudWatch, Performance
-  Insights, RDS, the DB secret, SNS, and invoke rights on the gateway plus tool Lambdas.
+- **Signing/execution role (`AgentCoreDBOpsRole`)**: serves as the tool Lambda's
+  execution role, the gateway's role, and the MCP service's SigV4 signing role, with
+  least-privilege read access to CloudWatch, Performance Insights, RDS, the DB secret,
+  and SNS.
 - **Agent Space roles**: `DevOpsAgentRole-AgentSpace` (assumed by the service to
   monitor the account) and `DevOpsAgentRole-WebappAdmin` (backs the operator web app).
 
@@ -192,8 +192,8 @@ aws cloudformation deploy \
 ```
 
 If you created the optional scoped deploy role, add `--role-arn "$CFN_ROLE_ARN"` above
-`--parameter-overrides` (keep `--parameter-overrides` last; it is greedy). No `jq`?
-Build the overrides with Python:
+`--parameter-overrides` (keep `--parameter-overrides` last). No `jq`? Build the
+overrides with Python:
 `--parameter-overrides $(python3 -c "import json;print(' '.join(f\"{p['ParameterKey']}={p['ParameterValue']}\" for p in json.load(open('parameters.json'))))")`
 
 > **IAM propagation.** The MCP service registration depends on the signing role's
@@ -209,10 +209,10 @@ aws cloudformation describe-stacks --stack-name dbops-devops-agent \
 
 ## Step 2: Upload the investigation skill
 
-The skill and agent instructions are your DBA methodology. They are **not** part of the
-stack — you edit the Markdown in `skills/sql-server-investigation/` and `AGENTS.md` and
-upload them to the Agent Space with the Asset API, independent of the infra lifecycle.
-Set `AGENT_SPACE_ID` from the Step 1 outputs, then:
+The skill and agent instructions are your DBA methodology, and they are **not** part of
+the stack. You edit the Markdown in `skills/sql-server-investigation/` and `AGENTS.md`,
+then upload them to the Agent Space with the Asset API, independent of the infra
+lifecycle. Set `AGENT_SPACE_ID` from the Step 1 outputs, then:
 
 ```bash
 AGENT_SPACE_ID=<AgentSpaceId from Step 1 outputs>
