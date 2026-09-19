@@ -36,9 +36,10 @@ webhook credentials, must be done by hand in the console.
 
 ## What the stack provisions
 
-One `aws cloudformation deploy` creates the integration: 21 resources across six
+One `aws cloudformation deploy` creates the integration: 19 resources across five
 areas. All resource names are fixed (`dbops-*`, `sql-server-dbops`,
-`AgentCoreDBOpsRole`) so re-deploys and teardown are predictable.
+`AgentCoreDBOpsRole`) so re-deploys and teardown are predictable. (The investigation
+skill is uploaded separately in Step 2, not by the stack.)
 
 ### Compute (the diagnostic tools)
 
@@ -77,14 +78,6 @@ areas. All resource names are fixed (`dbops-*`, `sql-server-dbops`,
 - **MCP service registration and 13-tool allowlist**: registers the gateway as a
   SigV4 MCP service and allowlists every tool for the agent to call.
 
-### Assets (agent knowledge)
-
-- **`sql-server-investigation` skill**: the triage, diagnose, drill-down, correlate,
-  and recommend methodology (SKILL.md plus a reference doc), inlined into the
-  template and created via the Asset API.
-- **`agents_md` instructions**: always-applied directives telling the agent to use
-  the SQL Server skill for RDS SQL Server investigations.
-
 ### Event-driven alarm plumbing
 
 - **Webhook secret** (`dbops-devops-agent-webhook`): created as a container with
@@ -93,7 +86,7 @@ areas. All resource names are fixed (`dbops-*`, `sql-server-dbops`,
   on the RDS instance, each wired to invoke the webhook executor so a breach
   auto-starts an investigation.
 
-**The one manual step:** minting the webhook URL and secret (Step 2) is console-only.
+**The one console-only step:** minting the webhook URL and secret (Step 3) is console-only.
 CloudFormation cannot generate the HMAC key pair, so the stack creates the secret
 with placeholder values that you populate afterward.
 
@@ -102,8 +95,9 @@ with placeholder values that you populate afterward.
 ### Tooling
 
 - **AWS CLI v2** (any current version).
-- **Python 3** — used by `deploy.sh` to regenerate the skill assets and build the
-  deploy parameters (no `jq` required).
+- **`jq`** to build the deploy parameters from `parameters.json` (Step 1 shows a
+  Python fallback if you don't have it).
+- **`zip`** and **Python 3** for the skill upload in Step 2.
 
 ### Base infrastructure (deploy this first)
 
@@ -175,44 +169,76 @@ cp parameters.example.json parameters.json
 # edit parameters.json, replacing the placeholders with your dbops outputs
 ```
 
-## Step 1: Deploy
+## Step 1: Deploy the stack
 
-Run [`deploy.sh`](deploy.sh) from `deployment/devops-agent/`. It regenerates the skill
-assets from source, packages the Lambda/layer artifacts, and deploys the stack in one
-command:
+Run from `deployment/devops-agent/`, with `AWS_REGION` and `YOUR_ARTIFACT_BUCKET`
+exported. `package` uploads the Lambda/layer artifacts; `deploy` creates the stack.
 
 ```bash
 cd deployment/devops-agent    # from the repo root
-export AWS_REGION=us-west-2
-export YOUR_ARTIFACT_BUCKET=<your-bucket>       # see "Artifact S3 bucket" above
-export CFN_ROLE_ARN="$CFN_ROLE_ARN"             # optional; omit to deploy as yourself
 
-./deploy.sh
+aws cloudformation package \
+  --template-file dbops-devops-agent.yaml \
+  --s3-bucket "$YOUR_ARTIFACT_BUCKET" \
+  --output-template-file packaged.yaml \
+  --region "$AWS_REGION"
+
+aws cloudformation deploy \
+  --template-file packaged.yaml \
+  --stack-name dbops-devops-agent \
+  --region "$AWS_REGION" \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides $(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
 ```
 
-`deploy.sh` reads parameters from `parameters.json`, prints the stack outputs (gateway
-URL, agent space ID, webhook secret ARN) when done, and needs only the AWS CLI and
-Python 3 (no `jq`).
+If you created the optional scoped deploy role, add `--role-arn "$CFN_ROLE_ARN"` above
+`--parameter-overrides` (keep `--parameter-overrides` last; it is greedy). No `jq`?
+Build the overrides with Python:
+`--parameter-overrides $(python3 -c "import json;print(' '.join(f\"{p['ParameterKey']}={p['ParameterValue']}\" for p in json.load(open('parameters.json'))))")`
 
 > **IAM propagation.** The MCP service registration depends on the signing role's
 > trust and invoke-gateway grant. If the deploy fails once on an authorization error
-> for `McpService`, re-run `./deploy.sh`. IAM is just catching up.
+> for `McpService`, re-run `deploy`. IAM is just catching up.
 
-### Customizing the investigation skill
+Read the outputs (gateway URL, **agent space ID**, webhook secret ARN):
 
-The skill is your DBA methodology, and it is the piece you are most likely to change.
-Edit the Markdown source, **not** the template:
+```bash
+aws cloudformation describe-stacks --stack-name dbops-devops-agent \
+  --region "$AWS_REGION" --query 'Stacks[0].Outputs' --output table
+```
 
-- [`skills/sql-server-investigation/SKILL.md`](skills/sql-server-investigation/SKILL.md)
-- [`skills/sql-server-investigation/references/tool-reference.md`](skills/sql-server-investigation/references/tool-reference.md)
-- [`AGENTS.md`](AGENTS.md)
+## Step 2: Upload the investigation skill
 
-`deploy.sh` runs [`build_skill_assets.py`](build_skill_assets.py) first, which injects
-those files into the `SkillAsset`/`AgentsMdAsset` resources in `dbops-devops-agent.yaml`
-(between `BEGIN/END GENERATED ASSETS` markers). Those template blocks are generated —
-do not hand-edit them; your changes there would be overwritten on the next deploy.
+The skill and agent instructions are your DBA methodology. They are **not** part of the
+stack — you edit the Markdown in `skills/sql-server-investigation/` and `AGENTS.md` and
+upload them to the Agent Space with the Asset API, independent of the infra lifecycle.
+Set `AGENT_SPACE_ID` from the Step 1 outputs, then:
 
-## Step 2: Mint and store the webhook credentials (manual)
+```bash
+AGENT_SPACE_ID=<AgentSpaceId from Step 1 outputs>
+
+# Skill (multi-file: SKILL.md + references/) uploaded as a zip.
+# name/description are read from the SKILL.md frontmatter.
+( cd skills/sql-server-investigation && zip -rq /tmp/sql-server-investigation.zip SKILL.md references )
+aws devops-agent create-asset \
+  --agent-space-id "$AGENT_SPACE_ID" \
+  --asset-type skill \
+  --metadata '{"agent_types":["GENERIC"]}' \
+  --content "{\"zip\":{\"zipFile\":\"$(base64 < /tmp/sql-server-investigation.zip | tr -d '\n')\"}}" \
+  --region "$AWS_REGION"
+
+# Agent instructions (single file AGENTS.md).
+aws devops-agent create-asset \
+  --agent-space-id "$AGENT_SPACE_ID" \
+  --asset-type agents_md \
+  --metadata '{"agent_type":"INCIDENT_RCA"}' \
+  --content "{\"file\":{\"path\":\"AGENTS.md\",\"body\":{\"text\":$(python3 -c 'import json;print(json.dumps(open("AGENTS.md").read()))')}}}" \
+  --region "$AWS_REGION"
+```
+
+To change the skill later, edit the Markdown and re-run with `aws devops-agent update-asset`.
+
+## Step 3: Mint and store the webhook credentials (manual)
 
 This is the only step CloudFormation cannot do.
 
@@ -231,7 +257,7 @@ aws secretsmanager put-secret-value \
 The alarms and executor Lambda are already wired. Once the secret holds real values,
 alarm-triggered investigations work.
 
-## Step 3: Verify
+## Step 4: Verify
 
 **Open the web app first.** Either use the [DevOps Agent console](https://console.aws.amazon.com/aidevops/home#/agent-spaces)
 (pick **sql-server-dbops**), or get the direct URL:
@@ -287,11 +313,21 @@ Tool names in DevOps Agent use the format `<target>___<tool>` (triple underscore
 
 ## Cleanup
 
+First delete the skill assets you uploaded in Step 2 (they are not part of the stack),
+then delete the stack:
+
 ```bash
+# 1. Remove the uploaded assets (skill + agents_md)
+for A in $(aws devops-agent list-assets --agent-space-id "$AGENT_SPACE_ID" \
+             --region "$AWS_REGION" --query 'items[].assetId' --output text); do
+  aws devops-agent delete-asset --agent-space-id "$AGENT_SPACE_ID" --asset-id "$A" --region "$AWS_REGION"
+done
+
+# 2. Delete the stack
 aws cloudformation delete-stack --stack-name dbops-devops-agent --region "$AWS_REGION"
 aws cloudformation wait stack-delete-complete --stack-name dbops-devops-agent --region "$AWS_REGION"
 ```
 
-One stack delete removes the agent space, gateway, targets, service, associations,
-assets, Lambdas, layer, roles, secret, and alarms. Delete the CFN service-role stack
-too if you created one.
+The stack delete removes the agent space, gateway, target, service, associations,
+Lambda, layer, roles, secret, and alarms. Delete the CFN service-role stack too if you
+created one.

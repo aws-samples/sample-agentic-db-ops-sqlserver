@@ -134,23 +134,8 @@ Resources:
                   - aidevops:DisassociateService
                   - aidevops:ListAssociations
                 Resource: '*'
-              - Sid: DevOpsAgentAssets
-                Effect: Allow
-                Action:
-                  - aidevops:CreateAsset
-                  - aidevops:GetAsset
-                  - aidevops:UpdateAsset
-                  - aidevops:DeleteAsset
-                  - aidevops:ListAssets
-                  - aidevops:ListAssetVersions
-                  - aidevops:GetAssetContent
-                  - aidevops:CreateAssetFile
-                  - aidevops:GetAssetFile
-                  - aidevops:UpdateAssetFile
-                  - aidevops:DeleteAssetFile
-                  - aidevops:ListAssetFiles
-                  - aidevops:ListAssetTypes
-                Resource: '*'
+              # Skill/agents_md assets are uploaded outside the stack (see README
+              # Step 2), so the deploy role needs no aidevops:*Asset* permissions.
               - Sid: DevOpsAgentTagging
                 Effect: Allow
                 Action:
