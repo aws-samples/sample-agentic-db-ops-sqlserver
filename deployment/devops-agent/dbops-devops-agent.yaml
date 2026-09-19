@@ -570,104 +570,172 @@ Resources:
           - dbops-query-tools___get_slow_queries
           - dbops-query-tools___send_email_notification
           - dbops-query-tools___suggest_indexes
+  # BEGIN GENERATED ASSETS. Do not edit by hand. Source: skills/ and AGENTS.md.
+  # Regenerate with build_skill_assets.py (run automatically by deploy.sh).
   SkillAsset:
     Type: AWS::DevOpsAgent::Asset
     Properties:
-      AgentSpaceId:
-        Fn::GetAtt:
-        - AgentSpace
-        - AgentSpaceId
+      AgentSpaceId: !GetAtt AgentSpace.AgentSpaceId
       AssetType: skill
       Metadata:
         name: sql-server-investigation
-        description: Incident investigation procedures for Amazon RDS for SQL 
-          Server performance issues — blocking and lock contention, plan 
-          regression, slow or high-impact queries, and missing indexes.
+        description: "Incident investigation procedures for Amazon RDS for SQL Server performance issues: blocking and lock contention, plan regression, slow or high-impact queries, and missing indexes."
         agent_types:
         - GENERIC
       Files:
       - Path: SKILL.md
-        ContentText: "---\nname: sql-server-investigation\ndescription: Incident investigation\
-          \ procedures for Amazon RDS for SQL Server\n  performance issues including\
-          \ blocking and lock contention, plan regression,\n  slow or high-impact\
-          \ queries, and missing indexes. Use this skill when\n  investigating SQL\
-          \ Server database latency, high CPU, blocked sessions, query\n  timeouts,\
-          \ or read/write performance degradation. Triggers on requests like\n  \"\
-          investigate SQL Server blocking\", \"RDS SQL Server high CPU\", \"query\
-          \ timeout\n  RCA\", \"plan regression\", or \"why is my SQL Server slow\"\
-          .\nmetadata:\n  version: \"1.0.0\"\n  aws-devops-agent-skills.agent-types:\
-          \ \"Incident RCA\"\n  aws-devops-agent-skills.aws-services: \"Amazon RDS\"\
-          \n  aws-devops-agent-skills.technical-domains: \"Databases\"\n---\n\n# SQL\
-          \ Server Investigation\n\nStructured troubleshooting methodology for Amazon\
-          \ RDS for SQL Server. Work from\nthe lightweight signal outward: use native\
-          \ AWS APIs to triage and localize the\nproblem, then use the MCP tools to\
-          \ resolve the session-, plan-, and index-level\ndetail those APIs cannot\
-          \ reach.\n\n## Investigation Workflow\n\nFollow these steps in order for\
-          \ every investigation.\n\n### Step 1: TRIAGE — Assess Overall Health\n\n\
-          Always start here regardless of the reported symptom. Retrieve current values\
-          \ and\nactive alarms from native AWS APIs:\n\n```\ncloudwatch.DescribeAlarms\
-          \     # active alarms on the instance\ncloudwatch.GetMetricData      # CPUUtilization,\
-          \ DatabaseConnections,\n                              # FreeableMemory,\
-          \ FreeStorageSpace\npi.GetResourceMetrics         # db.load — Average Active\
-          \ Sessions (AAS)\n```\n\n**Severity thresholds:**\n\n| Severity | Criteria\
-          \ |\n|----------|----------|\n| CRITICAL | CPU > 90% OR AAS > 8 OR connections\
-          \ near max OR FreeableMemory < 1 GB |\n| WARNING | CPU > 70% OR AAS > 4\
-          \ OR memory declining OR connections > 70% of max |\n| INFO | All metrics\
-          \ within normal ranges |\n\n### Step 2: DIAGNOSE — Identify Bottleneck Type\n\
-          \nUse Performance Insights to find the dominant wait over the incident window,\
-          \ then\nroute based on the wait type:\n\n```\npi.GetResourceMetrics    \
-          \     # db.load grouped by wait event\npi.DescribeDimensionKeys      # top\
-          \ SQL by database time\n```\n\n| Dominant Wait Type | Bottleneck | Go To\
-          \ |\n|-------------------|-----------|-------|\n| CPU | Compute-bound queries\
-          \ | Step 3a |\n| Lock / `LCK_M_*` | Blocking and locking | Step 3b |\n|\
-          \ IO / `PAGEIOLATCH` | Storage I/O saturation | Step 3c |\n| Memory / `RESOURCE_SEMAPHORE`\
-          \ | Memory pressure | Step 3d |\n| Network / `ASYNC_NETWORK_IO` | Network\
-          \ saturation | Step 3e |\n\n### Step 3: DRILL DOWN — Investigate the Specific\
-          \ Area\n\n#### 3a: CPU-Bound\n\n```\nget_query_store_top_queries       \
-          \ # metric=\"cpu\" — top CPU consumers with plan_ids\nget_expensive_queries_from_cache\
-          \   # metric=\"cpu\" — heavy queries in plan cache\nsuggest_indexes    \
-          \                # missing indexes causing scans\n```\n\n#### 3b: Blocking\n\
-          \n```\nget_blocking_sessions              # blocking chains and head blocker\n\
-          get_slow_queries                   # long-running statements holding locks\n\
-          get_query_store_wait_stats         # lock wait time by query\n```\n\n####\
-          \ 3c: IO Saturation\n\n```\ncloudwatch.GetMetricData           # ReadIOPS,\
-          \ WriteIOPS vs provisioned limits\ncloudwatch.GetMetricData           #\
-          \ ReadLatency, WriteLatency spikes\nget_query_store_top_queries        #\
-          \ metric=\"io\" — heaviest I/O queries\n```\n\n#### 3d: Memory Pressure\n\
-          \n```\ncloudwatch.GetMetricData           # FreeableMemory trend over time\n\
-          get_query_store_top_queries        # metric=\"memory\" — memory-grant-heavy\
-          \ queries\npi.GetResourceMetrics              # db.load correlation with\
-          \ memory waits\n```\n\n#### 3e: Network\n\n```\ncloudwatch.GetMetricData\
-          \           # NetworkReceiveThroughput, NetworkTransmitThroughput\ncloudwatch.GetMetricData\
-          \           # DatabaseConnections — connection churn\npi.DescribeDimensionKeys\
-          \           # connected applications driving traffic\n```\n\n### Step 4:\
-          \ CORRELATE — Cross-Reference Findings\n\n```\nget_query_store_regressed_queries\
-          \  # recent regression or chronic? (MCP)\npi.GetResourceMetrics        \
-          \      # current load vs historical baseline\npi.DescribeDimensionKeys \
-          \          # which users and applications contribute most load\n```\n\n\
-          ### Step 5: RECOMMEND — Produce Actionable Output\n\nStructure the response\
-          \ as:\n\n1. **Severity** — CRITICAL / WARNING / INFO with the supporting\
-          \ thresholds.\n2. **Root cause** — one-sentence diagnosis with metric values.\n\
-          3. **Evidence** — specific numbers, timestamps, percentages, session IDs,\
-          \ SQL\n   text, `plan_id`s, and regression factor where applicable.\n4.\
-          \ **Recommendations** — ordered, most impactful first.\n5. **Queries to\
-          \ investigate** — specific SQL statements to review.\n6. **Index suggestions**\
-          \ — `CREATE INDEX` statements if applicable.\n\n## Data Source Boundaries\n\
-          \nPrefer native AWS APIs for everything they expose; reserve the MCP tools\
-          \ for\nSQL-level detail those APIs cannot reach.\n\nAvailable natively through\
-          \ AWS APIs (prefer these):\n\n- CloudWatch metrics — CPU, memory, storage,\
-          \ IOPS, latency, connections.\n- Performance Insights / Database Insights\
-          \ — database load, top wait events, top\n  SQL by database time, active\
-          \ sessions.\n- CloudWatch Logs — SQL Server error log, including deadlock\
-          \ traces (trace flags\n  1204/1222).\n- CloudTrail — parameter group changes,\
-          \ failovers, configuration modifications.\n\nOnly available through the\
-          \ MCP tools (direct SQL connection required) — for\nexample:\n\n- The exact\
-          \ blocking chain and head blocker (`get_blocking_sessions`).\n- Execution-plan\
-          \ regression history (`get_query_store_regressed_queries`).\n- Top resource-consuming\
-          \ queries with plan_ids (`get_query_store_top_queries`).\n- Queries and\
-          \ plans from the cache (`get_expensive_queries_from_cache`,\n  `get_query_plan_from_cache`).\n\
-          - Live missing-index recommendations and existing index usage\n  (`suggest_indexes`,\
-          \ `get_index_usage`).\n"
+        ContentText: |
+          ---
+          name: sql-server-investigation
+          description: Incident investigation procedures for Amazon RDS for SQL Server
+            performance issues including blocking and lock contention, plan regression,
+            slow or high-impact queries, and missing indexes. Use this skill when
+            investigating SQL Server database latency, high CPU, blocked sessions, query
+            timeouts, or read/write performance degradation. Triggers on requests like
+            "investigate SQL Server blocking", "RDS SQL Server high CPU", "query timeout
+            RCA", "plan regression", or "why is my SQL Server slow".
+          metadata:
+            version: "1.0.0"
+            aws-devops-agent-skills.agent-types: "Incident RCA"
+            aws-devops-agent-skills.aws-services: "Amazon RDS"
+            aws-devops-agent-skills.technical-domains: "Databases"
+          ---
+
+          # SQL Server Investigation
+
+          Structured troubleshooting methodology for Amazon RDS for SQL Server. Work from
+          the lightweight signal outward: use native AWS APIs to triage and localize the
+          problem, then use the MCP tools to resolve the session-, plan-, and index-level
+          detail those APIs cannot reach.
+
+          ## Investigation Workflow
+
+          Follow these steps in order for every investigation.
+
+          ### Step 1: TRIAGE — Assess Overall Health
+
+          Always start here regardless of the reported symptom. Retrieve current values and
+          active alarms from native AWS APIs:
+
+          ```
+          cloudwatch.DescribeAlarms     # active alarms on the instance
+          cloudwatch.GetMetricData      # CPUUtilization, DatabaseConnections,
+                                        # FreeableMemory, FreeStorageSpace
+          pi.GetResourceMetrics         # db.load — Average Active Sessions (AAS)
+          ```
+
+          **Severity thresholds:**
+
+          | Severity | Criteria |
+          |----------|----------|
+          | CRITICAL | CPU > 90% OR AAS > 8 OR connections near max OR FreeableMemory < 1 GB |
+          | WARNING | CPU > 70% OR AAS > 4 OR memory declining OR connections > 70% of max |
+          | INFO | All metrics within normal ranges |
+
+          ### Step 2: DIAGNOSE — Identify Bottleneck Type
+
+          Use Performance Insights to find the dominant wait over the incident window, then
+          route based on the wait type:
+
+          ```
+          pi.GetResourceMetrics         # db.load grouped by wait event
+          pi.DescribeDimensionKeys      # top SQL by database time
+          ```
+
+          | Dominant Wait Type | Bottleneck | Go To |
+          |-------------------|-----------|-------|
+          | CPU | Compute-bound queries | Step 3a |
+          | Lock / `LCK_M_*` | Blocking and locking | Step 3b |
+          | IO / `PAGEIOLATCH` | Storage I/O saturation | Step 3c |
+          | Memory / `RESOURCE_SEMAPHORE` | Memory pressure | Step 3d |
+          | Network / `ASYNC_NETWORK_IO` | Network saturation | Step 3e |
+
+          ### Step 3: DRILL DOWN — Investigate the Specific Area
+
+          #### 3a: CPU-Bound
+
+          ```
+          get_query_store_top_queries        # metric="cpu" — top CPU consumers with plan_ids
+          get_expensive_queries_from_cache   # metric="cpu" — heavy queries in plan cache
+          suggest_indexes                    # missing indexes causing scans
+          ```
+
+          #### 3b: Blocking
+
+          ```
+          get_blocking_sessions              # blocking chains and head blocker
+          get_slow_queries                   # long-running statements holding locks
+          get_query_store_wait_stats         # lock wait time by query
+          ```
+
+          #### 3c: IO Saturation
+
+          ```
+          cloudwatch.GetMetricData           # ReadIOPS, WriteIOPS vs provisioned limits
+          cloudwatch.GetMetricData           # ReadLatency, WriteLatency spikes
+          get_query_store_top_queries        # metric="io" — heaviest I/O queries
+          ```
+
+          #### 3d: Memory Pressure
+
+          ```
+          cloudwatch.GetMetricData           # FreeableMemory trend over time
+          get_query_store_top_queries        # metric="memory" — memory-grant-heavy queries
+          pi.GetResourceMetrics              # db.load correlation with memory waits
+          ```
+
+          #### 3e: Network
+
+          ```
+          cloudwatch.GetMetricData           # NetworkReceiveThroughput, NetworkTransmitThroughput
+          cloudwatch.GetMetricData           # DatabaseConnections — connection churn
+          pi.DescribeDimensionKeys           # connected applications driving traffic
+          ```
+
+          ### Step 4: CORRELATE — Cross-Reference Findings
+
+          ```
+          get_query_store_regressed_queries  # recent regression or chronic? (MCP)
+          pi.GetResourceMetrics              # current load vs historical baseline
+          pi.DescribeDimensionKeys           # which users and applications contribute most load
+          ```
+
+          ### Step 5: RECOMMEND — Produce Actionable Output
+
+          Structure the response as:
+
+          1. **Severity** — CRITICAL / WARNING / INFO with the supporting thresholds.
+          2. **Root cause** — one-sentence diagnosis with metric values.
+          3. **Evidence** — specific numbers, timestamps, percentages, session IDs, SQL
+             text, `plan_id`s, and regression factor where applicable.
+          4. **Recommendations** — ordered, most impactful first.
+          5. **Queries to investigate** — specific SQL statements to review.
+          6. **Index suggestions** — `CREATE INDEX` statements if applicable.
+
+          ## Data Source Boundaries
+
+          Prefer native AWS APIs for everything they expose; reserve the MCP tools for
+          SQL-level detail those APIs cannot reach.
+
+          Available natively through AWS APIs (prefer these):
+
+          - CloudWatch metrics — CPU, memory, storage, IOPS, latency, connections.
+          - Performance Insights / Database Insights — database load, top wait events, top
+            SQL by database time, active sessions.
+          - CloudWatch Logs — SQL Server error log, including deadlock traces (trace flags
+            1204/1222).
+          - CloudTrail — parameter group changes, failovers, configuration modifications.
+
+          Only available through the MCP tools (direct SQL connection required) — for
+          example:
+
+          - The exact blocking chain and head blocker (`get_blocking_sessions`).
+          - Execution-plan regression history (`get_query_store_regressed_queries`).
+          - Top resource-consuming queries with plan_ids (`get_query_store_top_queries`).
+          - Queries and plans from the cache (`get_expensive_queries_from_cache`,
+            `get_query_plan_from_cache`).
+          - Live missing-index recommendations and existing index usage
+            (`suggest_indexes`, `get_index_usage`).
       - Path: references/tool-reference.md
         ContentText: |
           # Tool Reference
@@ -709,34 +777,49 @@ Resources:
           | IO | PAGEIOLATCH_SH, PAGEIOLATCH_EX, WRITELOG | Storage bottleneck |
           | Memory | RESOURCE_SEMAPHORE, CMEMTHREAD | Memory pressure |
           | Network | ASYNC_NETWORK_IO | Client not consuming results fast enough |
-
   AgentsMdAsset:
     Type: AWS::DevOpsAgent::Asset
     Properties:
-      AgentSpaceId:
-        Fn::GetAtt:
-        - AgentSpace
-        - AgentSpaceId
+      AgentSpaceId: !GetAtt AgentSpace.AgentSpaceId
       AssetType: agents_md
       Metadata:
         agent_type: INCIDENT_RCA
       Files:
       - Path: AGENTS.md
-        ContentText: "Agent Type: Investigation (INCIDENT_RCA)\n\n# Investigation\
-          \ Agent Instructions\n\n## SQL Server Investigations\n\nWhen investigating\
-          \ issues involving SQL Server or RDS SQL Server instances, always\nuse the\
-          \ `sql-server-investigation` skill.\n\n### Triggers\n\nApply this skill\
-          \ when the investigation involves any of the following:\n\n- SQL Server\
-          \ or MSSQL database instances\n- RDS SQL Server (any edition)\n- High CPU,\
-          \ query timeouts, or performance issues on SQL Server\n- Blocking, deadlocks,\
-          \ or lock contention\n- Query performance degradation or regressions\n\n\
-          ### Why\n\nThe `sql-server-investigation` skill provides SQL Server-specific\
-          \ diagnostic\ncapabilities including:\n\n- DMV analysis (`sys.dm_exec_requests`,\
-          \ `sys.dm_tran_locks`, `sys.dm_os_waiting_tasks`)\n- Blocking chain identification\n\
-          - Wait event interpretation (LCK_M_IX, LCK_M_X, LCK_M_S, CXPACKET, etc.)\n\
-          - Query Store and execution plan analysis\n- Extended Events (XEL) file\
-          \ parsing\n\nThese capabilities go beyond generic AWS observability tools\
-          \ and provide deeper root\ncause analysis for SQL Server-specific issues.\n"
+        ContentText: |
+          Agent Type: Investigation (INCIDENT_RCA)
+
+          # Investigation Agent Instructions
+
+          ## SQL Server Investigations
+
+          When investigating issues involving SQL Server or RDS SQL Server instances, always
+          use the `sql-server-investigation` skill.
+
+          ### Triggers
+
+          Apply this skill when the investigation involves any of the following:
+
+          - SQL Server or MSSQL database instances
+          - RDS SQL Server (any edition)
+          - High CPU, query timeouts, or performance issues on SQL Server
+          - Blocking, deadlocks, or lock contention
+          - Query performance degradation or regressions
+
+          ### Why
+
+          The `sql-server-investigation` skill provides SQL Server-specific diagnostic
+          capabilities including:
+
+          - DMV analysis (`sys.dm_exec_requests`, `sys.dm_tran_locks`, `sys.dm_os_waiting_tasks`)
+          - Blocking chain identification
+          - Wait event interpretation (LCK_M_IX, LCK_M_X, LCK_M_S, CXPACKET, etc.)
+          - Query Store and execution plan analysis
+          - Extended Events (XEL) file parsing
+
+          These capabilities go beyond generic AWS observability tools and provide deeper root
+          cause analysis for SQL Server-specific issues.
+  # END GENERATED ASSETS
 Outputs:
   GatewayUrl:
     Description: AgentCore MCP gateway URL

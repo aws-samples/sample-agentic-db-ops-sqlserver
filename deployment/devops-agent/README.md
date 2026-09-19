@@ -102,8 +102,8 @@ with placeholder values that you populate afterward.
 ### Tooling
 
 - **AWS CLI v2** (any current version).
-- **`jq`**, used in Step 1 to turn `parameters.json` into deploy parameters. If you
-  don't have it, Step 1 shows a `python3` fallback.
+- **Python 3** — used by `deploy.sh` to regenerate the skill assets and build the
+  deploy parameters (no `jq` required).
 
 ### Base infrastructure (deploy this first)
 
@@ -175,51 +175,42 @@ cp parameters.example.json parameters.json
 # edit parameters.json, replacing the placeholders with your dbops outputs
 ```
 
-## Step 1: Package and deploy
+## Step 1: Deploy
 
-Run from the `deployment/devops-agent/` directory, with `AWS_REGION` and
-`YOUR_ARTIFACT_BUCKET` already exported. `package` uploads the Lambda/layer artifacts
-to that bucket and writes `packaged.yaml`, then `deploy` creates the stack from it.
+Run [`deploy.sh`](deploy.sh) from `deployment/devops-agent/`. It regenerates the skill
+assets from source, packages the Lambda/layer artifacts, and deploys the stack in one
+command:
 
 ```bash
 cd deployment/devops-agent    # from the repo root
+export AWS_REGION=us-west-2
+export YOUR_ARTIFACT_BUCKET=<your-bucket>       # see "Artifact S3 bucket" above
+export CFN_ROLE_ARN="$CFN_ROLE_ARN"             # optional; omit to deploy as yourself
 
-aws cloudformation package \
-  --template-file dbops-devops-agent.yaml \
-  --s3-bucket "$YOUR_ARTIFACT_BUCKET" \
-  --output-template-file packaged.yaml
-
-aws cloudformation deploy \
-  --template-file packaged.yaml \
-  --stack-name dbops-devops-agent \
-  --region "$AWS_REGION" \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides $(jq -r '.[] | "\(.ParameterKey)=\(.ParameterValue)"' parameters.json)
+./deploy.sh
 ```
 
-If you created the optional scoped deploy role, add `--role-arn "$CFN_ROLE_ARN"` as
-its own line **above** `--parameter-overrides`.
-
-> **Why the `jq` wrapper?** Fill in your values once in `parameters.json`. Unlike
-> `create-stack --parameters`, `deploy --parameter-overrides` accepts only inline
-> `Key=Value` pairs, not `file://`, so the `jq` expression converts the JSON file
-> into those pairs. No `jq`? Use the python equivalent:
-> `--parameter-overrides $(python3 -c "import json;print(' '.join(f\"{p['ParameterKey']}={p['ParameterValue']}\" for p in json.load(open('parameters.json'))))")`
-
-> **Keep `--parameter-overrides` last.** It is greedy and swallows any flag placed
-> after it. Pass `--role-arn` as a plain flag, not inside a `${VAR:+...}` shell
-> conditional.
+`deploy.sh` reads parameters from `parameters.json`, prints the stack outputs (gateway
+URL, agent space ID, webhook secret ARN) when done, and needs only the AWS CLI and
+Python 3 (no `jq`).
 
 > **IAM propagation.** The MCP service registration depends on the signing role's
 > trust and invoke-gateway grant. If the deploy fails once on an authorization error
-> for `McpService`, re-run `deploy`. IAM is just catching up.
+> for `McpService`, re-run `./deploy.sh`. IAM is just catching up.
 
-Read the outputs (gateway URL, agent space ID, webhook secret ARN):
+### Customizing the investigation skill
 
-```bash
-aws cloudformation describe-stacks --stack-name dbops-devops-agent \
-  --region "$AWS_REGION" --query 'Stacks[0].Outputs' --output table
-```
+The skill is your DBA methodology, and it is the piece you are most likely to change.
+Edit the Markdown source, **not** the template:
+
+- [`skills/sql-server-investigation/SKILL.md`](skills/sql-server-investigation/SKILL.md)
+- [`skills/sql-server-investigation/references/tool-reference.md`](skills/sql-server-investigation/references/tool-reference.md)
+- [`AGENTS.md`](AGENTS.md)
+
+`deploy.sh` runs [`build_skill_assets.py`](build_skill_assets.py) first, which injects
+those files into the `SkillAsset`/`AgentsMdAsset` resources in `dbops-devops-agent.yaml`
+(between `BEGIN/END GENERATED ASSETS` markers). Those template blocks are generated —
+do not hand-edit them; your changes there would be overwritten on the next deploy.
 
 ## Step 2: Mint and store the webhook credentials (manual)
 
