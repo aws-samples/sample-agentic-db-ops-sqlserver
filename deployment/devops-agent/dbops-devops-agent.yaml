@@ -32,15 +32,23 @@ Parameters:
     Description: Name for the DevOps Agent Space
   SigningRoleName:
     Type: String
-    Default: AgentCoreDBOpsRole
-    Description: Name for the multi-purpose signing/execution role the stack 
-      creates
+    Default: ''
+    Description: Name for the signing/execution role the stack creates (default
+      <stack name>-signing)
+Conditions:
+  UseDefaultSigningRoleName:
+    Fn::Equals:
+    - Ref: SigningRoleName
+    - ''
 Resources:
   SigningRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName:
-        Ref: SigningRoleName
+        Fn::If:
+        - UseDefaultSigningRoleName
+        - Fn::Sub: ${AWS::StackName}-signing
+        - Ref: SigningRoleName
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -142,7 +150,8 @@ Resources:
   AgentSpaceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: DevOpsAgentRole-AgentSpace
+      RoleName:
+        Fn::Sub: ${AWS::StackName}-AgentSpace
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -175,7 +184,8 @@ Resources:
   WebappAdminRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: DevOpsAgentRole-WebappAdmin
+      RoleName:
+        Fn::Sub: ${AWS::StackName}-WebappAdmin
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -590,6 +600,6 @@ Outputs:
       - AgentSpace
       - AgentSpaceId
   WebhookSecretArn:
-    Description: Webhook secret ARN — populate after Step 16a (console)
+    Description: Webhook secret ARN
     Value:
       Ref: WebhookSecret
