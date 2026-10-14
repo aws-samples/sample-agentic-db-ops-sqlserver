@@ -212,15 +212,6 @@ If `jq` isn't installed, generate the overrides with Python instead:
 --parameter-overrides $(python3 -c "import json; print(' '.join(f\"{p['ParameterKey']}={p['ParameterValue']}\" for p in json.load(open('parameters.json'))))")
 ```
 
-> **If `McpService` fails with `AccessDenied`:** the new IAM role can take a minute to
-> become usable. On a first deployment the stack rolls back, so delete it, wait a
-> minute, and deploy again:
->
-> ```bash
-> aws cloudformation delete-stack --stack-name dbops-devops-agent --region "$AWS_REGION"
-> aws cloudformation wait stack-delete-complete --stack-name dbops-devops-agent --region "$AWS_REGION"
-> ```
-
 Read the stack outputs (gateway URL, Agent Space ID, webhook secret ARN):
 
 ```bash
