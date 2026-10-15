@@ -203,9 +203,6 @@ aws cloudformation deploy \
 If you created the deploy role, add `--role-arn "$CFN_ROLE_ARN"` to the `deploy`
 command.
 
-To choose the signing role's name yourself, add `SigningRoleName=<name>` to
-`--parameter-overrides`. The name must not match an existing IAM role.
-
 If `jq` isn't installed, generate the overrides with Python instead:
 
 ```bash
