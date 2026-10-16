@@ -29,12 +29,11 @@ def get_rds_resource_id():
 
 def calculate_period(minutes_back):
     """Calculate CloudWatch period to stay under 1440 datapoint limit"""
-    if minutes_back <= 1440:  # ≤ 24 hours
-        return 60  # 1 minute
-    elif minutes_back <= 4320:  # ≤ 3 days
-        return 300  # 5 minutes
-    else:  # > 3 days
-        return 600  # 10 minutes
+    # Data older than 15 / 63 days only supports periods in multiples of 300 / 3600 seconds
+    period = max(60, -(-int(minutes_back) // 1440) * 60)
+    days = minutes_back / 1440
+    step = 3600 if days > 63 else 300 if days > 15 else 60
+    return -(-period // step) * step
 
 # Define the AI model
 model = BedrockModel(

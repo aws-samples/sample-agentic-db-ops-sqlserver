@@ -92,7 +92,7 @@ def check_backup_encryption() -> Dict[str, Any]:
         # Get recent snapshots
         snapshot_response = rds_client.describe_db_snapshots(
             DBInstanceIdentifier=DB_INSTANCE_ID,
-            MaxRecords=10
+            MaxRecords=20
         )
         
         snapshots = []

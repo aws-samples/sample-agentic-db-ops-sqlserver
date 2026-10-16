@@ -38,12 +38,11 @@ def get_db_connection():
 
 def calculate_period(minutes_back):
     """Calculate CloudWatch period to stay under 1440 datapoint limit"""
-    if minutes_back <= 1440:
-        return 60
-    elif minutes_back <= 4320:
-        return 300
-    else:
-        return 600
+    # Data older than 15 / 63 days only supports periods in multiples of 300 / 3600 seconds
+    period = max(60, -(-int(minutes_back) // 1440) * 60)
+    days = minutes_back / 1440
+    step = 3600 if days > 63 else 300 if days > 15 else 60
+    return -(-period // step) * step
 
 def get_instance_age_hours():
     """Get the age of the RDS instance in hours"""
@@ -643,7 +642,9 @@ def get_tempdb_size() -> Dict[str, Any]:
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # FILEPROPERTY only reads files of the current database, so switch to tempdb first
         query = """
+        USE tempdb;
         SELECT 
             name AS file_name,
             physical_name,
@@ -652,7 +653,7 @@ def get_tempdb_size() -> Dict[str, Any]:
             (size - FILEPROPERTY(name, 'SpaceUsed')) * 8.0 / 1024 AS free_mb,
             growth,
             is_percent_growth
-        FROM tempdb.sys.database_files
+        FROM sys.database_files
         ORDER BY file_id
         """
         
@@ -920,11 +921,12 @@ def get_version_store_usage() -> Dict[str, Any]:
         cursor = conn.cursor()
         
         query = """
+        USE tempdb;
         SELECT 
             SUM(version_store_reserved_page_count) * 8.0 / 1024 AS version_store_mb,
-            SUM(user_objects_alloc_page_count) * 8.0 / 1024 AS user_objects_mb,
-            SUM(internal_objects_alloc_page_count) * 8.0 / 1024 AS internal_objects_mb
-        FROM tempdb.sys.dm_db_file_space_usage
+            SUM(user_object_reserved_page_count) * 8.0 / 1024 AS user_objects_mb,
+            SUM(internal_object_reserved_page_count) * 8.0 / 1024 AS internal_objects_mb
+        FROM sys.dm_db_file_space_usage
         """
         
         cursor.execute(query)
