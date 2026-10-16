@@ -755,10 +755,10 @@ def performance_insights_agent(payload, context=None):
         with sm:
             a = Agent(system_prompt=agent.system_prompt, model=model, session_manager=sm, tools=_tools)
             response = a(user_input)
-            return response.message['content'][0]['text']
+            return str(response)
     else:
         response = agent(user_input)
-        return response.message['content'][0]['text']
+        return str(response)
 
 if __name__ == "__main__":
     if os.getenv("LOCAL_TESTING"):

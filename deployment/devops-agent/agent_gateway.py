@@ -92,7 +92,7 @@ def main():
             if prompt.lower() in ("exit", "quit", ""):
                 break
             response = agent(prompt)
-            print(response.message["content"][0]["text"])
+            print(str(response))
             print()
 
     print("Goodbye!")

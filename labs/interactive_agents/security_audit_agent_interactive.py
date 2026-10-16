@@ -498,5 +498,5 @@ if __name__ == "__main__":
         
         if prompt.strip():
             response = agent(prompt)
-            print(response.message['content'][0]['text'])
+            print(str(response))
             print()

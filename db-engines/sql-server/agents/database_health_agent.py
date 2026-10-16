@@ -93,8 +93,8 @@ def database_health_agent(payload, context=None):
     if sm:
         with sm:
             a = Agent(system_prompt=system_prompt, model=model, session_manager=sm, tools=_tools)
-            return a(user_input).message['content'][0]['text']
-    return agent(user_input).message['content'][0]['text']
+            return str(a(user_input))
+    return str(agent(user_input))
 
 
 if __name__ == "__main__":

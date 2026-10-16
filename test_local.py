@@ -74,7 +74,7 @@ def main():
     agent = Agent(system_prompt=cfg["prompt"], model=model, tools=tools)
     print(f"Agent: {name}\nPrompt: {prompt}\n")
     result = agent(prompt)
-    print(f"\n{'='*60}\n{result.message['content'][0]['text']}")
+    print(f"\n{'='*60}\n{str(result)}")
 
 if __name__ == "__main__":
     main()
