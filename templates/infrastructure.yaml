@@ -560,6 +560,9 @@ Resources:
           - Effect: Allow
             Action: secretsmanager:GetSecretValue
             Resource: !Ref DBSecret
+          - Effect: Allow
+            Action: kms:Decrypt
+            Resource: !GetAtt EncryptionKey.Arn
 
   BastionRole:
     Type: AWS::IAM::Role

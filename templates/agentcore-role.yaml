@@ -48,6 +48,19 @@ Resources:
               StringEquals:
                 kms:ViaService: !Sub pi.${AWS::Region}.amazonaws.com
 
+          - Sid: KMSForSecretsAndSNS
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:ViaService:
+                  - !Sub secretsmanager.${AWS::Region}.amazonaws.com
+                  - !Sub sns.${AWS::Region}.amazonaws.com
+
           - Sid: CloudWatchMetrics
             Effect: Allow
             Action:
@@ -110,9 +123,14 @@ Resources:
               - bedrock-agentcore:CreateMemory
               - bedrock-agentcore:DeleteMemory
               - bedrock-agentcore:ListMemories
-              - bedrock-agentcore:GetMemoryStrategies
-              - bedrock-agentcore:IngestMemoryEvents
-              - bedrock-agentcore:RetrieveMemoryEvents
+              - bedrock-agentcore:CreateEvent
+              - bedrock-agentcore:GetEvent
+              - bedrock-agentcore:ListEvents
+              - bedrock-agentcore:ListSessions
+              - bedrock-agentcore:ListActors
+              - bedrock-agentcore:RetrieveMemoryRecords
+              - bedrock-agentcore:ListMemoryRecords
+              - bedrock-agentcore:GetMemoryRecord
             Resource: !Sub arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:memory/*
 
           - Sid: OpenTelemetryTracing
