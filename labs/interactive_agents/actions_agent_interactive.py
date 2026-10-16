@@ -17,9 +17,8 @@ GUARDRAIL_VERSION = os.getenv('BEDROCK_GUARDRAIL_VERSION', 'DRAFT')
 
 # Define the AI model with Bedrock Guardrail
 model_config = {
-    'model_id': os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'),
-    'region_name': AWS_REGION,
-    'temperature': 0.3
+    'model_id': os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-5-5'),
+    'region_name': AWS_REGION
 }
 
 # Attach guardrail if configured

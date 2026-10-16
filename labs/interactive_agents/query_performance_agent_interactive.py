@@ -57,9 +57,8 @@ def get_db_connection():
 
 # Define the AI model
 model = BedrockModel(
-    model_id=os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'),
-    region_name=AWS_REGION,
-    temperature=0.0
+    model_id=os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-5-5'),
+    region_name=AWS_REGION
 )
 
 # ===== QUERY STORE TOOLS =====

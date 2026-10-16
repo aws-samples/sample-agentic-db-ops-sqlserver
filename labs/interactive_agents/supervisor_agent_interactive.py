@@ -28,9 +28,8 @@ DB_INSTANCE_ID = os.getenv('DB_INSTANCE_ID', 'dbops-infra-sqlserver')
 
 # Define the AI model
 model = BedrockModel(
-    model_id=os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'),
-    region_name=AWS_REGION,
-    temperature=0.3
+    model_id=os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-sonnet-5-5'),
+    region_name=AWS_REGION
 )
 
 # Helper function to invoke other agents
