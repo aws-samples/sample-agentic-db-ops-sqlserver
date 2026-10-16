@@ -47,7 +47,7 @@ pi.GetResourceMetrics         # db.load — Average Active Sessions (AAS)
 
 ### Step 2: DIAGNOSE — Identify Bottleneck Type
 
-Use Performance Insights to find the dominant wait over the incident window, then
+Use Database Insights to find the dominant wait over the incident window, then
 route based on the wait type:
 
 ```
@@ -133,7 +133,7 @@ SQL-level detail those APIs cannot reach.
 Available natively through AWS APIs (prefer these):
 
 - CloudWatch metrics — CPU, memory, storage, IOPS, latency, connections.
-- Performance Insights / Database Insights — database load, top wait events, top
+- Database Insights — database load, top wait events, top
   SQL by database time, active sessions.
 - CloudWatch Logs — SQL Server error log, including deadlock traces (trace flags
   1204/1222).

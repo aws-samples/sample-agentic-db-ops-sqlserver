@@ -30,7 +30,7 @@ CONFIG_FILE = "gateway_config.json"
 # Tool schemas for registration
 HEALTH_TOOLS = [
     {"name": "get_cpu_utilization", "description": "Get CPU utilization timeline from CloudWatch", "inputSchema": {"type": "object", "properties": {"minutes_back": {"type": "integer", "description": "Lookback window in minutes (default 1440)"}}}},
-    {"name": "get_database_load", "description": "Get database load (Active Average Sessions) from Performance Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 24)"}}}},
+    {"name": "get_database_load", "description": "Get database load (Active Average Sessions) from Database Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 24)"}}}},
     {"name": "get_extended_database_load", "description": "Get extended database load with wait event breakdown", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 24)"}}}},
     {"name": "get_database_connections", "description": "Get current database connection count from CloudWatch", "inputSchema": {"type": "object", "properties": {"minutes_back": {"type": "integer", "description": "Lookback window in minutes (default 1440)"}}}},
     {"name": "get_freeable_memory", "description": "Get freeable memory from CloudWatch", "inputSchema": {"type": "object", "properties": {"minutes_back": {"type": "integer", "description": "Lookback window in minutes (default 1440)"}}}},
@@ -38,10 +38,10 @@ HEALTH_TOOLS = [
     {"name": "get_iops", "description": "Get read/write IOPS from CloudWatch", "inputSchema": {"type": "object", "properties": {"minutes_back": {"type": "integer", "description": "Lookback window in minutes (default 1440)"}}}},
     {"name": "get_read_write_latency", "description": "Get read/write latency from CloudWatch", "inputSchema": {"type": "object", "properties": {"minutes_back": {"type": "integer", "description": "Lookback window in minutes (default 1440)"}}}},
     {"name": "get_network_throughput", "description": "Get network receive/transmit throughput from CloudWatch", "inputSchema": {"type": "object", "properties": {"minutes_back": {"type": "integer", "description": "Lookback window in minutes (default 1440)"}}}},
-    {"name": "get_wait_events", "description": "Get top wait events from Performance Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
-    {"name": "get_top_sql", "description": "Get top SQL statements by load from Performance Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
-    {"name": "get_users", "description": "Get top database users by load from Performance Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
-    {"name": "get_applications", "description": "Get top applications by load from Performance Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
+    {"name": "get_wait_events", "description": "Get top wait events from Database Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
+    {"name": "get_top_sql", "description": "Get top SQL statements by load from Database Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
+    {"name": "get_users", "description": "Get top database users by load from Database Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
+    {"name": "get_applications", "description": "Get top applications by load from Database Insights", "inputSchema": {"type": "object", "properties": {"hours_back": {"type": "integer", "description": "Lookback window in hours (default 1)"}}}},
     {"name": "send_email_notification", "description": "Send an alert notification via SNS", "inputSchema": {"type": "object", "properties": {"subject": {"type": "string", "description": "Email subject"}, "message": {"type": "string", "description": "Email body"}, "severity": {"type": "string", "description": "INFO, WARNING, or CRITICAL"}}, "required": ["subject", "message"]}},
 ]
 
@@ -160,7 +160,7 @@ def deploy(query_only=False):
 
     # Register targets (skip any that already exist so re-runs are idempotent).
     # Health tools are optional — --query-only registers just dbops-query-tools
-    # (the skill reads health signals via the agent's native CloudWatch/PI access).
+    # (the skill reads health signals via the agent's native CloudWatch/Database Insights access).
     targets = [
         ("dbops-health-tools", "14 tools", HEALTH_TOOLS),
         ("dbops-query-tools", "13 tools", QUERY_TOOLS),

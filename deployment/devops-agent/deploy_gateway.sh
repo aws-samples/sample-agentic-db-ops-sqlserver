@@ -40,7 +40,7 @@ $PYTHON -m pip install bedrock-agentcore-starter-toolkit pymssql boto3 -q 2>/dev
 
 # Health tools are optional. With --query-only we skip the dbops-health-tools
 # Lambda entirely (the investigation skill reads health signals via the agent's
-# own native CloudWatch/PI access), deploying just dbops-query-tools.
+# own native CloudWatch/Database Insights access), deploying just dbops-query-tools.
 QUERY_ONLY=false
 if [ "$1" == "--query-only" ]; then
     QUERY_ONLY=true

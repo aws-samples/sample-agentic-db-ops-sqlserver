@@ -82,7 +82,7 @@ AgentCore agents run in private subnets. These VPC endpoints are required for ag
 | Database Insights | `com.amazonaws.{region}.pi` | Database Health Agent |
 | SNS | `com.amazonaws.{region}.sns` | All agents (alert notifications) |
 | CloudTrail | `com.amazonaws.{region}.cloudtrail` | Security Audit Agent |
-| KMS | `com.amazonaws.{region}.kms` | Database Health Agent (decrypt PI data) |
+| KMS | `com.amazonaws.{region}.kms` | Database Health Agent (decrypt Database Insights data) |
 | STS | `com.amazonaws.{region}.sts` | Credential refresh + cross-account |
 
 ### Security Group for VPC Endpoints

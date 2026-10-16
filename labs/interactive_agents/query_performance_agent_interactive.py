@@ -18,7 +18,7 @@ DB_NAME = os.getenv('DB_NAME', 'TravelHub')
 
 # Helper functions
 def get_pi_client():
-    """Get Performance Insights client"""
+    """Get Database Insights (pi) client"""
     return boto3.client('pi', region_name=AWS_REGION)
 
 def get_rds_resource_id():

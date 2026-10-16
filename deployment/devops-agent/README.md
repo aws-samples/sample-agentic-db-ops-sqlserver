@@ -52,7 +52,7 @@ the stack.
 
 - **`<stack name>-signing`**: execution role for the query Lambda, the gateway's role,
   and the SigV4 signing role for the MCP service. Read access to CloudWatch,
-  Performance Insights, RDS, the DB secret, and SNS.
+  Database Insights, RDS, the DB secret, and SNS.
 - **`<stack name>-AgentSpace`**: assumed by DevOps Agent to read your account.
 - **`<stack name>-WebappAdmin`**: used by the operator web app.
 

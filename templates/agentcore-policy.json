@@ -22,7 +22,7 @@
       "Resource": "arn:aws:bedrock-agentcore:*:*:runtime/*"
     },
     {
-      "Sid": "PerformanceInsights",
+      "Sid": "DatabaseInsights",
       "Effect": "Allow",
       "Action": [
         "pi:GetResourceMetrics",
@@ -32,7 +32,7 @@
       "Resource": "arn:aws:pi:*:*:metrics/rds/*"
     },
     {
-      "Sid": "KMSDecryptForPI",
+      "Sid": "KMSDecryptForDatabaseInsights",
       "Effect": "Allow",
       "Action": [
         "kms:Decrypt",

@@ -766,7 +766,7 @@ ADDITIONAL SAFETY RULES:
   confirmation before executing. This applies regardless of whether the user said "fix it".
 
 Agents you coordinate:
-1. Database Health Agent   - CloudWatch + Performance Insights
+1. Database Health Agent   - CloudWatch + Database Insights
 2. Query Performance Agent - DMVs, live plans, schema, Query Store
 3. Security Audit Agent    - encryption, logins, RDS events, CloudTrail
 4. Data Lifecycle Agent    - storage, IOPS, TempDB, backups

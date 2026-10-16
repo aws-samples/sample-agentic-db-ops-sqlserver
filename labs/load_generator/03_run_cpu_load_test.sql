@@ -2,7 +2,7 @@
 -- =============================================
 -- Sustained CPU Load Generator
 -- Runs procedures in loops to generate sustained high CPU
--- Use this to see CPU metrics in Performance Insights
+-- Use this to see CPU metrics in Database Insights
 -- =============================================
 
 USE DBOpsLab;
@@ -19,7 +19,7 @@ PRINT '';
 PRINT '========================================';
 PRINT 'SUSTAINED CPU LOAD GENERATOR';
 PRINT 'WARNING: This will run for several minutes!';
-PRINT 'Monitor CPU in Performance Insights/Task Manager';
+PRINT 'Monitor CPU in Database Insights/Task Manager';
 PRINT '========================================';
 PRINT '';
 
@@ -67,7 +67,7 @@ PRINT '========================================';
 PRINT 'SUSTAINED CPU LOAD TEST COMPLETE';
 PRINT '========================================';
 PRINT '';
-PRINT 'Check Performance Insights for:';
+PRINT 'Check Database Insights for:';
 PRINT '- High CPU utilization over the test period';
 PRINT '- Top SQL queries consuming CPU';
 PRINT '- Wait events (should show CPU as dominant)';

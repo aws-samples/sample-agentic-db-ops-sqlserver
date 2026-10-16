@@ -30,7 +30,7 @@ Resources:
               - bedrock-agentcore:InvokeAgentRuntime
             Resource: !Sub arn:aws:bedrock-agentcore:*:${AWS::AccountId}:runtime/*
 
-          - Sid: PerformanceInsights
+          - Sid: DatabaseInsights
             Effect: Allow
             Action:
               - pi:GetResourceMetrics
@@ -38,7 +38,7 @@ Resources:
               - pi:GetDimensionKeyDetails
             Resource: !Sub arn:aws:pi:*:${AWS::AccountId}:metrics/rds/*
 
-          - Sid: KMSDecryptForPI
+          - Sid: KMSDecryptForDatabaseInsights
             Effect: Allow
             Action:
               - kms:Decrypt

@@ -76,7 +76,7 @@ Resources:
         PolicyDocument:
           Version: '2012-10-17'
           Statement:
-          - Sid: PerformanceInsights
+          - Sid: DatabaseInsights
             Effect: Allow
             Action:
             - pi:GetResourceMetrics
@@ -84,7 +84,7 @@ Resources:
             - pi:GetDimensionKeyDetails
             Resource:
               Fn::Sub: arn:aws:pi:*:${AWS::AccountId}:metrics/rds/*
-          - Sid: KMSDecryptForPI
+          - Sid: KMSDecryptForDatabaseInsights
             Effect: Allow
             Action:
             - kms:Decrypt

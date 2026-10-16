@@ -200,7 +200,7 @@ def validate_rds():
               f"Engine: {engine}",
               f"Engine is {engine} — this toolkit is designed for SQL Server")
 
-        # Database Insights (Performance Insights)
+        # Database Insights (RDS reports it in the PerformanceInsights* fields)
         pi_enabled = db.get("PerformanceInsightsEnabled", False)
         pi_retention = db.get("PerformanceInsightsRetentionPeriod", 0)
         check("Database Insights", pi_enabled,

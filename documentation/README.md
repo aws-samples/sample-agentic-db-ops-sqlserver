@@ -46,8 +46,9 @@ Autonomous DBOps is a multi-agent system that converts SQL Server diagnostic exp
                                                   ▼                                    ▼
                               ┌────────────────────────────────┐    ┌──────────────────────────────────┐
                               │  Amazon RDS for SQL Server      │    │  AWS Services                     │
-                              │  • DMVs • Query Store • TempDB  │    │  Bedrock, CloudWatch, PI,         │
-                              │  • Secrets Manager (credentials)│    │  CloudTrail, SNS, KMS             │
+                              │  • DMVs • Query Store • TempDB  │    │  Bedrock, CloudWatch,             │
+                              │  • Secrets Manager (credentials)│    │  Database Insights, CloudTrail,   │
+                              │                                 │    │  SNS, KMS                         │
                               └────────────────────────────────┘    └──────────────────────────────────┘
 ```
 
@@ -154,7 +155,7 @@ Agents run in private subnets with no NAT gateway or internet access. All AWS se
 | Interface | `pi` | Database Health (Database Insights) |
 | Interface | `sns` | All agents (notifications) |
 | Interface | `cloudtrail` | Security Audit |
-| Interface | `kms` | Database Health (decrypt PI data) |
+| Interface | `kms` | Database Health (decrypt Database Insights data) |
 | Interface | `sts` | Credential refresh + cross-account |
 
 ## Code Structure
@@ -163,7 +164,7 @@ Agents run in private subnets with no NAT gateway or internet access. All AWS se
 db-engines/sql-server/
 ├── config/settings.py              ← Environment variables only (no logic)
 ├── tools/
-│   ├── database_health_tools.py    ← 14 @tool functions + helpers (PI client, period calc)
+│   ├── database_health_tools.py    ← 14 @tool functions + helpers (Database Insights client, period calc)
 │   ├── query_performance_tools.py  ← 13 @tool functions + helpers (DB connection)
 │   ├── security_audit_tools.py     ← 8 @tool functions + helpers (DB connection)
 │   ├── data_lifecycle_tools.py     ← 25 @tool functions + helpers (DB connection, period calc)

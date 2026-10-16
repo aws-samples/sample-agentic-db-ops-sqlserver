@@ -15,7 +15,7 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 
 # Helper functions
 def get_pi_client():
-    """Get Performance Insights client"""
+    """Get Database Insights (pi) client"""
     return boto3.client('pi', region_name=AWS_REGION)
 
 def get_rds_resource_id():
@@ -41,11 +41,11 @@ model = BedrockModel(
     region_name=AWS_REGION
 )
 
-# ===== PERFORMANCE INSIGHTS TOOLS =====
+# ===== DATABASE INSIGHTS TOOLS =====
 
 @tool
 def get_database_load(hours_back: int = 24) -> Dict[str, Any]:
-    """Get database load timeline from Performance Insights with trend analysis. Use 1-minute granularity for ≤24 hours, 1-hour for longer periods."""
+    """Get database load timeline from Database Insights with trend analysis. Use 1-minute granularity for ≤24 hours, 1-hour for longer periods."""
     try:
         pi_client = get_pi_client()
         resource_id = get_rds_resource_id()

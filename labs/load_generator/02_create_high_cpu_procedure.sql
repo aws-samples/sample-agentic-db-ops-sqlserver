@@ -333,7 +333,7 @@ PRINT '- Multiple full table scans';
 PRINT '- Nested subqueries';
 PRINT '';
 PRINT 'To test, run: EXEC sp_CustomerOrderSummary';
-PRINT 'Monitor CPU in Performance Insights or Task Manager';
+PRINT 'Monitor CPU in Database Insights or Task Manager';
 PRINT '';
 PRINT 'Next: Run load test (script 03)';
 

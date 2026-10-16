@@ -45,7 +45,7 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-west-2')
 
 # Helper functions
 def get_pi_client():
-    """Get Performance Insights client"""
+    """Get Database Insights (pi) client"""
     return boto3.client('pi', region_name=AWS_REGION)
 
 def get_rds_resource_id():
@@ -71,11 +71,11 @@ model = BedrockModel(
     region_name=AWS_REGION
 )
 
-# ===== PERFORMANCE INSIGHTS TOOLS =====
+# ===== DATABASE INSIGHTS TOOLS =====
 
 @tool
 def get_database_load(hours_back: int = 24) -> Dict[str, Any]:
-    """Get database load timeline from Performance Insights with trend analysis. Use 1-minute granularity for ≤24 hours, 1-hour for longer periods."""
+    """Get database load timeline from Database Insights with trend analysis. Use 1-minute granularity for ≤24 hours, 1-hour for longer periods."""
     try:
         pi_client = get_pi_client()
         resource_id = get_rds_resource_id()
@@ -653,11 +653,11 @@ Sent by AgentCore SQL Server Agent
 
 # ===== AGENT CONFIGURATION =====
 
-system_prompt = """You are an RDS SQL Server performance specialist using Performance Insights and CloudWatch metrics.
+system_prompt = """You are an RDS SQL Server performance specialist using Database Insights and CloudWatch metrics.
 
 Available tools:
 
-Performance Insights (1-min granularity for ≤24h):
+Database Insights (1-min granularity for ≤24h):
 - get_database_load: Overall database load
 - get_extended_database_load: Extended load with statistics (up to 7 days, but respects instance creation time)
 - get_wait_events: Wait event breakdown (CPU, IO, Log, Other)
@@ -745,7 +745,7 @@ agent = Agent(
 
 @app.entrypoint
 def performance_insights_agent(payload, context=None):
-    """Invoke the Performance Insights agent with a payload"""
+    """Invoke the Database Health agent with a payload"""
     user_input = payload.get("prompt", "")
     print("User input:", user_input)
     session_id = getattr(context, 'session_id', None) or payload.get("session_id", "default")

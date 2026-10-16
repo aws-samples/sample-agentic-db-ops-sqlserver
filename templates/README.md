@@ -85,8 +85,8 @@ aws iam put-role-policy \
 |-----|---------|---------|
 | BedrockModelInvocation | `bedrock:InvokeModel`, `InvokeModelWithResponseStream` | All agents |
 | AgentCoreA2AInvocation | `bedrock-agentcore:InvokeAgentRuntime` | Supervisor |
-| PerformanceInsights (Database Insights) | `pi:GetResourceMetrics`, `DescribeDimensionKeys`, `GetDimensionKeyDetails` | Database Health |
-| KMSDecryptForPI | `kms:Decrypt`, `DescribeKey` (scoped via `kms:ViaService` condition) | Database Health |
+| DatabaseInsights | `pi:GetResourceMetrics`, `DescribeDimensionKeys`, `GetDimensionKeyDetails` | Database Health |
+| KMSDecryptForDatabaseInsights | `kms:Decrypt`, `DescribeKey` (scoped via `kms:ViaService` condition) | Database Health |
 | CloudWatchMetrics | `cloudwatch:GetMetricStatistics`, `GetMetricData`, `ListMetrics`, `DescribeAlarms` | Health, Lifecycle |
 | RDSReadOnly | `rds:Describe*` (6 specific actions) | Health, Security, Lifecycle |
 | SecretsManagerDBCredentials | `secretsmanager:GetSecretValue` | Query Perf, Security, Lifecycle |

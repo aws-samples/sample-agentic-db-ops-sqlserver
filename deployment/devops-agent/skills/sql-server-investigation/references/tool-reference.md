@@ -2,14 +2,13 @@
 
 ## Health Metrics Thresholds
 
-Host metrics are read by the DevOps Agent natively (CloudWatch and Performance
-Insights / Database Insights); they are not MCP tools. Use these thresholds during
-triage.
+Host metrics are read by the DevOps Agent natively (CloudWatch and Database
+Insights); they are not MCP tools. Use these thresholds during triage.
 
 | Metric | Normal | Warning | Critical | Source |
 |--------|--------|---------|----------|--------|
 | CPU Utilization | < 70% | 70 to 90% | > 90% | CloudWatch |
-| Database Load (AAS) | < 2 | 2 to 4 | > 4 | Performance Insights |
+| Database Load (AAS) | < 2 | 2 to 4 | > 4 | Database Insights |
 | Connections | < 80% of max | 80 to 90% of max | > 90% of max | CloudWatch |
 | Freeable Memory | > 2 GB | 1 to 2 GB | < 1 GB | CloudWatch |
 | Free Storage | > 20% | 10 to 20% | < 10% | CloudWatch |
