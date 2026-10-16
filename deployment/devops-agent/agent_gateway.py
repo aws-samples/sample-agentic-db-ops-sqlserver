@@ -9,6 +9,7 @@ Requires gateway_config.json (created by setup_gateway.py).
 """
 
 import json
+import os
 import sys
 
 import httpx
@@ -74,7 +75,7 @@ def main():
         print(f"Connected! {len(tools)} tools available via Gateway.\n")
 
         model = BedrockModel(
-            model_id="us.anthropic.claude-sonnet-4-6",
+            model_id=os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-5-5"),
             region_name=region,
             streaming=True,
         )

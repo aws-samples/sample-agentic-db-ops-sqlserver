@@ -12,7 +12,7 @@ from tools.query_performance_tools import (
 
 app = BedrockAgentCoreApp()
 
-model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION, temperature=0.3)
+model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION)
 
 system_prompt = """You are an RDS SQL Server query performance optimization specialist.
 

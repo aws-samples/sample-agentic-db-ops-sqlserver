@@ -8,7 +8,7 @@ from strands import Agent
 from strands.models import BedrockModel
 from config.settings import AWS_REGION, LLM_MODEL
 
-model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION, temperature=0.3)
+model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION)
 
 AGENTS = {
     "database_health": {

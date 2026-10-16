@@ -20,7 +20,7 @@ from config.settings import AWS_REGION, LLM_MODEL, MEMORY_ID
 from tools.database_health_tools import get_cpu_utilization, get_database_load, ...
 
 app = BedrockAgentCoreApp()
-model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION, temperature=0.3)
+model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION)
 
 system_prompt = """You are the Database Health Agent..."""
 _tools = [get_cpu_utilization, get_database_load, ...]

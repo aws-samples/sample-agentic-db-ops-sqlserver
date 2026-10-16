@@ -22,6 +22,10 @@ echo ""
 
 SQL_SERVER_DIR="$ROOT_DIR/db-engines/sql-server"
 
+# Model for all agents: BEDROCK_MODEL_ID from .env, else the default in config/settings.py
+BEDROCK_MODEL_ID=$(cd "$SQL_SERVER_DIR" && python3 -c "from config.settings import LLM_MODEL; print(LLM_MODEL)")
+echo "🤖 Using model: $BEDROCK_MODEL_ID"
+
 # Step 0: Create shared memory with semantic + summarization strategies
 echo "🧠 Setting up shared memory..."
 MEMORY_ID=$(python3 "$ROOT_DIR/scripts/setup_memory.py" | grep "^MEMORY_ID=" | cut -d= -f2)
@@ -115,28 +119,28 @@ echo "agentcore configure --name database_health_agent -e database_health_agent.
 agentcore configure --name database_health_agent -e database_health_agent.py $COMMON
 agentcore deploy --agent database_health_agent --auto-update-on-conflict \
   --env MEMORY_ID=$MEMORY_ID --env DB_INSTANCE_ID=$DB_INSTANCE_ID \
-  --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION
+  --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION --env BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID
 echo "✅ Database Health Agent deployed"
 
 echo "⚡ [2/5] Query Performance Agent..."
 agentcore configure --name query_performance_agent -e query_performance_agent.py $COMMON
 agentcore deploy --agent query_performance_agent --auto-update-on-conflict \
   --env MEMORY_ID=$MEMORY_ID --env DB_INSTANCE_ID=$DB_INSTANCE_ID \
-  --env DB_SECRET_ID=$DB_SECRET_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION
+  --env DB_SECRET_ID=$DB_SECRET_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION --env BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID
 echo "✅ Query Performance Agent deployed"
 
 echo "🔒 [3/5] Security Audit Agent..."
 agentcore configure --name security_audit_agent -e security_audit_agent.py $COMMON
 agentcore deploy --agent security_audit_agent --auto-update-on-conflict \
   --env MEMORY_ID=$MEMORY_ID --env DB_INSTANCE_ID=$DB_INSTANCE_ID \
-  --env DB_SECRET_ID=$DB_SECRET_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION
+  --env DB_SECRET_ID=$DB_SECRET_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION --env BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID
 echo "✅ Security Audit Agent deployed"
 
 echo "💾 [4/5] Data Lifecycle Agent..."
 agentcore configure --name data_lifecycle_agent -e data_lifecycle_agent.py $COMMON
 agentcore deploy --agent data_lifecycle_agent --auto-update-on-conflict \
   --env MEMORY_ID=$MEMORY_ID --env DB_INSTANCE_ID=$DB_INSTANCE_ID \
-  --env DB_SECRET_ID=$DB_SECRET_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION
+  --env DB_SECRET_ID=$DB_SECRET_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION --env BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID
 echo "✅ Data Lifecycle Agent deployed"
 
 echo "🎯 [5/5] Supervisor Agent..."
@@ -159,7 +163,7 @@ echo "  SECURITY_AGENT_ARN=$SECURITY_AGENT_ARN"
 echo "  LIFECYCLE_AGENT_ARN=$LIFECYCLE_AGENT_ARN"
 agentcore configure --name supervisor_agent -e supervisor_agent.py $COMMON
 agentcore deploy --agent supervisor_agent --auto-update-on-conflict \
-  --env MEMORY_ID=$MEMORY_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION \
+  --env MEMORY_ID=$MEMORY_ID --env SNS_TOPIC_NAME=$SNS_TOPIC_NAME --env AWS_REGION=$AWS_REGION --env BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID \
   --env HEALTH_AGENT_ARN=$HEALTH_AGENT_ARN --env PERFORMANCE_AGENT_ARN=$PERFORMANCE_AGENT_ARN \
   --env SECURITY_AGENT_ARN=$SECURITY_AGENT_ARN --env LIFECYCLE_AGENT_ARN=$LIFECYCLE_AGENT_ARN
 echo "✅ Supervisor Agent deployed"

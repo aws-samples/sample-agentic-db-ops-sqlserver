@@ -12,7 +12,7 @@ from tools.supervisor_tools import (
 
 app = BedrockAgentCoreApp()
 
-model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION, temperature=0.3)
+model = BedrockModel(model_id=LLM_MODEL, region_name=AWS_REGION)
 
 system_prompt = """You are the Supervisor Agent that orchestrates all SQL Server database management agents.
 
