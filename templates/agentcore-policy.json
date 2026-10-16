@@ -40,22 +40,26 @@
       ],
       "Resource": "*",
       "Condition": {
-        "StringEquals": {
+        "StringLike": {
           "kms:ViaService": "pi.*.amazonaws.com"
         }
       }
     },
     {
-      "Sid": "KMSDecryptForSecretsManager",
+      "Sid": "KMSForSecretsAndSNS",
       "Effect": "Allow",
       "Action": [
         "kms:Decrypt",
+        "kms:GenerateDataKey*",
         "kms:DescribeKey"
       ],
       "Resource": "*",
       "Condition": {
-        "StringEquals": {
-          "kms:ViaService": "secretsmanager.*.amazonaws.com"
+        "StringLike": {
+          "kms:ViaService": [
+            "secretsmanager.*.amazonaws.com",
+            "sns.*.amazonaws.com"
+          ]
         }
       }
     },
@@ -136,9 +140,14 @@
         "bedrock-agentcore:CreateMemory",
         "bedrock-agentcore:DeleteMemory",
         "bedrock-agentcore:ListMemories",
-        "bedrock-agentcore:GetMemoryStrategies",
-        "bedrock-agentcore:IngestMemoryEvents",
-        "bedrock-agentcore:RetrieveMemoryEvents"
+        "bedrock-agentcore:CreateEvent",
+        "bedrock-agentcore:GetEvent",
+        "bedrock-agentcore:ListEvents",
+        "bedrock-agentcore:ListSessions",
+        "bedrock-agentcore:ListActors",
+        "bedrock-agentcore:RetrieveMemoryRecords",
+        "bedrock-agentcore:ListMemoryRecords",
+        "bedrock-agentcore:GetMemoryRecord"
       ],
       "Resource": "arn:aws:bedrock-agentcore:*:*:memory/*"
     },

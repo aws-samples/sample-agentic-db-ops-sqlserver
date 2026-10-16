@@ -87,6 +87,7 @@ aws iam put-role-policy \
 | AgentCoreA2AInvocation | `bedrock-agentcore:InvokeAgentRuntime` | Supervisor |
 | DatabaseInsights | `pi:GetResourceMetrics`, `DescribeDimensionKeys`, `GetDimensionKeyDetails` | Database Health |
 | KMSDecryptForDatabaseInsights | `kms:Decrypt`, `DescribeKey` (scoped via `kms:ViaService` condition) | Database Health |
+| KMSForSecretsAndSNS | `kms:Decrypt`, `GenerateDataKey*`, `DescribeKey` (scoped via `kms:ViaService` to Secrets Manager and SNS) | All agents |
 | CloudWatchMetrics | `cloudwatch:GetMetricStatistics`, `GetMetricData`, `ListMetrics`, `DescribeAlarms` | Health, Lifecycle |
 | RDSReadOnly | `rds:Describe*` (6 specific actions) | Health, Security, Lifecycle |
 | SecretsManagerDBCredentials | `secretsmanager:GetSecretValue` | Query Perf, Security, Lifecycle |
@@ -94,7 +95,7 @@ aws iam put-role-policy \
 | CloudWatchLogsQuery | `logs:StartQuery`, `GetQueryResults`, `StopQuery` (scoped to `/aws/rds/*`) | Security |
 | CloudWatchLogsAgentLogging | `logs:CreateLogGroup`, `CreateLogStream`, `PutLogEvents` (scoped to `/aws/bedrock-agentcore/*`) | All agents |
 | CloudTrailLookup | `cloudtrail:LookupEvents` | Security |
-| AgentCoreMemory | 7 memory actions (scoped to `memory/*`) | All agents |
+| AgentCoreMemory | 12 memory actions (scoped to `memory/*`) | All agents |
 | ECRContainerPull | ECR auth + image pull | All agents |
 | OpenTelemetryTracing | `xray:PutTraceSegments`, `PutTelemetryRecords` | All agents |
 
