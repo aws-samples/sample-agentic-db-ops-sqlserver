@@ -26,6 +26,12 @@ SQL_SERVER_DIR="$ROOT_DIR/db-engines/sql-server"
 BEDROCK_MODEL_ID=$(cd "$SQL_SERVER_DIR" && python3 -c "from config.settings import LLM_MODEL; print(LLM_MODEL)")
 echo "🤖 Using model: $BEDROCK_MODEL_ID"
 
+if [[ "$AGENTCORE_ROLE_ARN" != arn:aws:iam::* ]]; then
+    echo "❌ AGENTCORE_ROLE_ARN is not set to a role ARN (got: '${AGENTCORE_ROLE_ARN}')"
+    echo "   Set it in .env to the RoleArn output of the stack built from templates/agentcore-role.yaml"
+    exit 1
+fi
+
 # Step 0: Create shared memory with semantic + summarization strategies
 echo "🧠 Setting up shared memory..."
 MEMORY_ID=$(python3 "$ROOT_DIR/scripts/setup_memory.py" | grep "^MEMORY_ID=" | cut -d= -f2)

@@ -18,12 +18,12 @@ def get_rds_resource_id():
 
 
 def calculate_period(minutes_back):
-    if minutes_back <= 1440:
-        return 60
-    elif minutes_back <= 4320:
-        return 300
-    else:
-        return 600
+    # CloudWatch returns at most 1,440 datapoints per call, and data older than
+    # 15 / 63 days only supports periods in multiples of 300 / 3600 seconds.
+    period = max(60, -(-int(minutes_back) // 1440) * 60)
+    days = minutes_back / 1440
+    step = 3600 if days > 63 else 300 if days > 15 else 60
+    return -(-period // step) * step
 
 
 # ===== DATABASE INSIGHTS TOOLS =====

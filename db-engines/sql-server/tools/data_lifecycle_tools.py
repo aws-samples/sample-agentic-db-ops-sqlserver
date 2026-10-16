@@ -8,12 +8,12 @@ from tools.shared_utils import db_cursor, fetch_all, send_notification
 
 
 def calculate_period(minutes_back):
-    if minutes_back <= 1440:
-        return 60
-    elif minutes_back <= 4320:
-        return 300
-    else:
-        return 600
+    # CloudWatch returns at most 1,440 datapoints per call, and data older than
+    # 15 / 63 days only supports periods in multiples of 300 / 3600 seconds.
+    period = max(60, -(-int(minutes_back) // 1440) * 60)
+    days = minutes_back / 1440
+    step = 3600 if days > 63 else 300 if days > 15 else 60
+    return -(-period // step) * step
 
 
 def get_instance_age_hours():
@@ -410,11 +410,13 @@ def get_tempdb_size() -> Dict[str, Any]:
     """Get TempDB current size, used space, and free space per file"""
     try:
         with db_cursor() as cursor:
+            # FILEPROPERTY only reads files of the current database, so switch to tempdb first
             cursor.execute("""
+            USE tempdb;
             SELECT name AS file_name, physical_name, size * 8.0 / 1024 AS size_mb,
                    FILEPROPERTY(name, 'SpaceUsed') * 8.0 / 1024 AS used_mb,
                    (size - FILEPROPERTY(name, 'SpaceUsed')) * 8.0 / 1024 AS free_mb, growth, is_percent_growth
-            FROM tempdb.sys.database_files ORDER BY file_id
+            FROM sys.database_files ORDER BY file_id
             """)
             results = fetch_all(cursor)
         total_size = sum(r['size_mb'] for r in results)
@@ -559,10 +561,11 @@ def get_version_store_usage() -> Dict[str, Any]:
     try:
         with db_cursor() as cursor:
             cursor.execute("""
+            USE tempdb;
             SELECT SUM(version_store_reserved_page_count) * 8.0 / 1024 AS version_store_mb,
-                   SUM(user_objects_alloc_page_count) * 8.0 / 1024 AS user_objects_mb,
-                   SUM(internal_objects_alloc_page_count) * 8.0 / 1024 AS internal_objects_mb
-            FROM tempdb.sys.dm_db_file_space_usage
+                   SUM(user_object_reserved_page_count) * 8.0 / 1024 AS user_objects_mb,
+                   SUM(internal_object_reserved_page_count) * 8.0 / 1024 AS internal_objects_mb
+            FROM sys.dm_db_file_space_usage
             """)
             row = cursor.fetchone()
         if row:

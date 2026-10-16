@@ -39,7 +39,7 @@ def check_backup_encryption() -> Dict[str, Any]:
         rds_client = boto3.client('rds', region_name=AWS_REGION)
         db_response = rds_client.describe_db_instances(DBInstanceIdentifier=DB_INSTANCE_ID)
         db_instance = db_response['DBInstances'][0]
-        snapshot_response = rds_client.describe_db_snapshots(DBInstanceIdentifier=DB_INSTANCE_ID, MaxRecords=10)
+        snapshot_response = rds_client.describe_db_snapshots(DBInstanceIdentifier=DB_INSTANCE_ID, MaxRecords=20)
         snapshots = []
         for s in snapshot_response.get('DBSnapshots', []):
             snapshots.append({
