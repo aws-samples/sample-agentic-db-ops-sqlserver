@@ -46,7 +46,7 @@ def get_db_connection():
             user=creds['username'],
             password=creds['password'],
             port=creds['port'],
-            database=os.getenv('DB_NAME', 'TravelHub')
+            database=os.getenv('DB_NAME', 'DBOpsLab')
         )
         return conn
     except Exception as e:
